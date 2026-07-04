@@ -1,0 +1,4 @@
+# Add one song title, URL keyword, or video ID per line to blacklist them from playing
+# E.g.
+# Baby Shark
+# dQw4w9WgXcQ
