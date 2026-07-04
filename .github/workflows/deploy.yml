@@ -11,8 +11,9 @@ jobs:
     steps:
       - name: Deploy Local Changes
         run: |
-          cd /home/ubuntu/PP_bot
+          cd /home/ubuntu/discord-bot
           git pull origin main
-          ./venv/bin/pip install -r requirements.txt
-          sudo systemctl restart pp_bot.service
-          sudo systemctl status pp_bot.service --no-pager
+          docker build -t pp-bot .
+          docker stop pp-bot || true
+          docker rm pp-bot || true
+          docker run -d --name pp-bot --restart unless-stopped --env-file .env pp-bot
