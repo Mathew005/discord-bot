@@ -13,6 +13,7 @@ ytdl_format_options = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'ytsearch1',
+    'js_runtimes': {'node': {}, 'deno': {}},
 }
 
 if os.path.exists("cookies.txt"):
