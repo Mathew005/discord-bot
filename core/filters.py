@@ -4,6 +4,11 @@ BLACKLIST_FILE = "blacklist.txt"
 
 def load_blacklist():
     if not os.path.exists(BLACKLIST_FILE):
+        try:
+            with open(BLACKLIST_FILE, "w", encoding="utf-8") as f:
+                f.write("# Add one song title, URL keyword, or video ID per line to blacklist them from playing\n")
+        except Exception as e:
+            print(f"Error creating blacklist.txt: {e}")
         return set()
     blacklist = set()
     with open(BLACKLIST_FILE, "r", encoding="utf-8") as f:

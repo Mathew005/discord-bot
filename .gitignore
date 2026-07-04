@@ -5,3 +5,7 @@ __pycache__/
 .agents/
 .gemini/
 *.log
+history/
+logs/
+artist.txt
+blacklist.txt

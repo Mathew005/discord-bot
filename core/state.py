@@ -14,6 +14,7 @@ ARTIST_FILE = "artist.txt"
 guild_states = {}
 
 def load_configured_artist():
+    default_artist = "Lofi Girl"
     if os.path.exists(ARTIST_FILE):
         try:
             with open(ARTIST_FILE, "r", encoding="utf-8") as f:
@@ -22,7 +23,13 @@ def load_configured_artist():
                     return artist
         except Exception as e:
             print(f"Error loading artist.txt: {e}")
-    return "Lofi Girl"
+    else:
+        try:
+            with open(ARTIST_FILE, "w", encoding="utf-8") as f:
+                f.write(default_artist)
+        except Exception as e:
+            print(f"Error creating artist.txt: {e}")
+    return default_artist
 
 configured_artist = load_configured_artist()
 

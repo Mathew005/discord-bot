@@ -3,29 +3,46 @@ from discord.ext import commands
 import os
 import sys
 import asyncio
+import logging
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 from core.state import guild_states
 
 load_dotenv()
 
-# Force UTF-8 encoding for stdout on Windows to support logging titles with emojis
+# Configure Logging
+os.makedirs("logs", exist_ok=True)
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+# File handler with rotation (5 MB per file, max 3 backups)
+file_handler = RotatingFileHandler('logs/bot.log', maxBytes=5*1024*1024, backupCount=3, encoding='utf-8')
+file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# Console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+# Suppress overly verbose discord.py debug logs
+logging.getLogger('discord').setLevel(logging.INFO)
+
+# Force UTF-8 encoding for stdout on Windows
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
-# Intents
 intents = discord.Intents.default()
 intents.message_content = True
-
-# Disable default help command to use our custom hybrid /help
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
-
-# ----------------- Events -----------------
 
 @bot.event
 async def on_ready():
-    print(f"Bot logged in as {bot.user}")
+    logging.info(f"Bot logged in as {bot.user}")
     try:
-        # Clear any previously copied guild commands to resolve duplicate listings
         for guild in bot.guilds:
             bot.tree.clear_commands(guild=guild)
             await bot.tree.sync(guild=guild)
