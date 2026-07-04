@@ -19,32 +19,17 @@ class MusicControlView(discord.ui.View):
         
         state = get_guild_state(guild_id, bot)
         
+        is_paused = state.voice_client and state.voice_client.is_paused()
+        self.pause_resume.label = "▶️" if is_paused else "⏸️"
+        self.pause_resume.style = discord.ButtonStyle.success if is_paused else discord.ButtonStyle.primary
+
         if state.loop_mode != 'off':
             self.loop_toggle.style = discord.ButtonStyle.success
         else:
             self.loop_toggle.style = discord.ButtonStyle.primary
 
-    @discord.ui.button(label="▶️", style=discord.ButtonStyle.success, custom_id="music_ctrl_resume")
-    async def play_resume(self, interaction: discord.Interaction, button: discord.ui.Button):
-        state = get_guild_state(self.guild_id, self.bot)
-        if not state.voice_client or not state.voice_client.is_connected():
-            await interaction.response.send_message("Not connected to a voice channel.", ephemeral=True)
-            return
-
-        if not interaction.user.voice or interaction.user.voice.channel != state.voice_client.channel:
-            await interaction.response.send_message("You must be in the same voice channel to control playback.", ephemeral=True)
-            return
-
-        if state.voice_client.is_paused():
-            state.voice_client.resume()
-            state.start_time = time.monotonic()
-            embed = create_now_playing_embed(state)
-            await interaction.response.edit_message(embed=embed, view=self)
-        else:
-            await interaction.response.defer()
-
-    @discord.ui.button(label="⏸️", style=discord.ButtonStyle.primary, custom_id="music_ctrl_pause")
-    async def pause(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="⏸️", style=discord.ButtonStyle.primary, custom_id="music_ctrl_pause_resume")
+    async def pause_resume(self, interaction: discord.Interaction, button: discord.ui.Button):
         state = get_guild_state(self.guild_id, self.bot)
         if not state.voice_client or not state.voice_client.is_connected():
             await interaction.response.send_message("Not connected to a voice channel.", ephemeral=True)
@@ -57,10 +42,19 @@ class MusicControlView(discord.ui.View):
         if state.voice_client.is_playing():
             state.voice_client.pause()
             state.elapsed_offset += time.monotonic() - state.start_time
-            embed = create_now_playing_embed(state)
-            await interaction.response.edit_message(embed=embed, view=self)
+            button.label = "▶️"
+            button.style = discord.ButtonStyle.success
+        elif state.voice_client.is_paused():
+            state.voice_client.resume()
+            state.start_time = time.monotonic()
+            button.label = "⏸️"
+            button.style = discord.ButtonStyle.primary
         else:
-            await interaction.response.defer()
+            await interaction.response.send_message("Nothing is currently playing.", ephemeral=True)
+            return
+
+        embed = create_now_playing_embed(state)
+        await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="🔁", style=discord.ButtonStyle.primary, custom_id="music_ctrl_loop")
     async def loop_toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -96,8 +90,10 @@ class MusicControlView(discord.ui.View):
             await interaction.response.send_message("Nothing is playing to skip.", ephemeral=True)
             return
 
-        state.voice_client.stop()
         await interaction.response.defer()
+        await state.fade_volume(0.0, duration=0.8)
+        if state.voice_client:
+            state.voice_client.stop()
 
     @discord.ui.button(label="⏹️", style=discord.ButtonStyle.danger, custom_id="music_ctrl_stop")
     async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -112,8 +108,11 @@ class MusicControlView(discord.ui.View):
                 await interaction.response.send_message("You must be in the same voice channel to disconnect the bot.", ephemeral=True)
                 return
 
-        await state.voice_client.disconnect()
-        state.voice_client = None
+        await interaction.response.defer()
+        await state.fade_volume(0.0, duration=0.8)
+        if state.voice_client:
+            await state.voice_client.disconnect()
+            state.voice_client = None
         state.current_track = None
         state.queue.clear()
         
@@ -121,7 +120,7 @@ class MusicControlView(discord.ui.View):
             child.disabled = True
         
         embed = discord.Embed(title="Stopped", description="Playback stopped and bot disconnected.", color=discord.Color.red())
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.message.edit(embed=embed, view=self)
 
 
 # ----------------- Interactive Dropdown Select Menu for Queue -----------------
@@ -434,7 +433,10 @@ class Music(commands.Cog):
             await ctx.send("Nothing is currently playing to skip.", ephemeral=True)
             return
 
-        state.voice_client.stop()
+        await ctx.defer()
+        await state.fade_volume(0.0, duration=0.8)
+        if state.voice_client:
+            state.voice_client.stop()
         await ctx.send("Skipped current song.")
 
     @commands.hybrid_command(name="nowplaying", aliases=["np"], description="Display details of the currently playing song.")
@@ -605,8 +607,11 @@ class Music(commands.Cog):
                 await ctx.send("You must be in the same voice channel as the bot to disconnect it.", ephemeral=True)
                 return
 
-        await state.voice_client.disconnect()
-        state.voice_client = None
+        await ctx.defer()
+        await state.fade_volume(0.0, duration=0.8)
+        if state.voice_client:
+            await state.voice_client.disconnect()
+            state.voice_client = None
         state.current_track = None
         state.queue.clear()
         await ctx.send("Disconnected from voice channel.")

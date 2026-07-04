@@ -77,6 +77,8 @@ async def load_extensions():
     await bot.load_extension("cogs.music")
     await bot.load_extension("cogs.blacklist")
     await bot.load_extension("cogs.general")
+    await bot.load_extension("cogs.playlist")
+    await bot.load_extension("cogs.history")
     print("[DEBUG] Loaded all cogs successfully.")
 
 async def main():

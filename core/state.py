@@ -3,6 +3,7 @@ import asyncio
 import yt_dlp
 import os
 import time
+import json
 from datetime import datetime
 from core.audio import ytdl, ytdl_format_options, ffmpeg_options, YTDLSource
 from core.filters import is_blacklisted
@@ -92,7 +93,6 @@ def get_progress_bar_str(state):
     percent = elapsed / duration
     filled_length = int(length * percent)
     
-    # Render with dashes and spaces matching the requested screenshot UI
     slider_chars = []
     for i in range(length):
         if i == filled_length:
@@ -124,14 +124,12 @@ def create_now_playing_embed(state):
 
     embed = discord.Embed(color=0x2ecc71) # Bright green side bar
     
-    # Title
     embed.add_field(
         name="Currently Playing:",
         value=f"[{track['title']} - ({duration_str})]({track['url']})",
         inline=False
     )
     
-    # Uploader Channel Link
     uploader = track.get('uploader', 'Unknown')
     uploader_url = track.get('uploader_url', track['url'])
     embed.add_field(
@@ -140,38 +138,34 @@ def create_now_playing_embed(state):
         inline=False
     )
     
-    # Likes, Views
     likes = format_likes(track.get('like_count'))
     views = format_views(track.get('view_count'))
     
     embed.add_field(name="Likes", value=f"👍 {likes}", inline=True)
     embed.add_field(name="Views", value=f"👁️ {views}", inline=True)
     
-    # Upload Date
     upload_date = format_upload_date(track.get('upload_date'))
     embed.add_field(name="Uploaded", value=f"📅 {upload_date}", inline=False)
     
-    # Requested By & Elapsed time
     req_mention = track.get('requester_mention', 'Autoplay')
+    if req_mention == 'Autoplay':
+        req_mention = f"Autoplay ({configured_artist})"
     elapsed_str = format_elapsed_time(track.get('requested_at'))
     embed.add_field(name="Requested By:", value=f"{req_mention} {elapsed_str}", inline=False)
     
-    # Playback Position
     progress_str = get_progress_bar_str(state)
     embed.add_field(name="Playback Position", value=progress_str, inline=False)
     
-    # Next track
     if state.queue:
         next_song = state.queue[0]
         embed.add_field(name="Next", value=f"`{next_song['title']}`", inline=False)
     else:
-        embed.add_field(name="Next", value="`🚫 Nothing next in queue`", inline=False)
+        embed.add_field(name="Next", value=f"`Autoplay: {configured_artist} will continue`", inline=False)
         
     thumbnail = track.get('thumbnail')
     if thumbnail:
         embed.set_thumbnail(url=thumbnail)
         
-    # Footer
     req_name = track.get('requester', 'Autoplay')
     if track.get('requested_at'):
         dt = datetime.fromtimestamp(track['requested_at'])
@@ -194,7 +188,7 @@ class GuildMusicState:
         self.guild_id = guild_id
         self.bot = bot
         self.queue = []
-        self.loop_mode = 'off'  # 'off', 'song', 'queue'
+        self.loop_mode = 'off'
         self.volume = 0.5
         self.artist_playlist = []
         self.artist_index = 0
@@ -207,6 +201,9 @@ class GuildMusicState:
         self.elapsed_offset = 0.0
         self.progress_task = None
         self.last_controller_message = None
+        self.fade_task = None
+        self.play_lock = asyncio.Lock()
+        self.consecutive_errors = 0
 
     async def send_message(self, content):
         if self.text_channel:
@@ -222,6 +219,77 @@ class GuildMusicState:
             except Exception as e:
                 print(f"Error sending message: {e}")
         return None
+
+    async def fade_volume(self, target_volume, duration=1.5):
+        """Linearly interpolates active voice client player volume to create a smooth fade."""
+        if self.fade_task:
+            self.fade_task.cancel()
+            self.fade_task = None
+            
+        async def fade_coro():
+            if not self.voice_client or not self.voice_client.source:
+                return
+            source = self.voice_client.source
+            start_volume = getattr(source, 'volume', self.volume)
+            steps = int(duration / 0.1)
+            if steps <= 0:
+                if hasattr(source, 'volume'):
+                    source.volume = target_volume
+                return
+            diff = target_volume - start_volume
+            step_diff = diff / steps
+            for _ in range(steps):
+                if not self.voice_client or not self.voice_client.source:
+                    break
+                if hasattr(source, 'volume'):
+                    source.volume = max(0.0, min(2.0, source.volume + step_diff))
+                await asyncio.sleep(0.1)
+            if self.voice_client and self.voice_client.source:
+                if hasattr(self.voice_client.source, 'volume'):
+                    self.voice_client.source.volume = target_volume
+
+        self.fade_task = self.bot.loop.create_task(fade_coro())
+        try:
+            await self.fade_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self.fade_task = None
+
+    def write_to_history(self, track):
+        """Append the track details to a local JSON file representing the server playback history."""
+        os.makedirs("history", exist_ok=True)
+        history_file = f"history/{self.guild_id}.json"
+        
+        history_list = []
+        if os.path.exists(history_file):
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history_list = json.load(f)
+            except Exception as e:
+                print(f"Error reading history file: {e}")
+                
+        record = {
+            'title': track['title'],
+            'url': track['url'],
+            'requester': track.get('requester', 'Autoplay'),
+            'requester_mention': track.get('requester_mention', 'Autoplay'),
+            'requester_id': track.get('requester_id'),
+            'requested_at': track.get('requested_at', time.time()),
+            'played_at': time.time()
+        }
+        
+        # Prevent logging duplicate consecutive plays
+        if not history_list or history_list[0].get('url') != track['url']:
+            history_list.insert(0, record)
+            
+        history_list = history_list[:100]
+        
+        try:
+            with open(history_file, "w", encoding="utf-8") as f:
+                json.dump(history_list, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error writing history file: {e}")
 
     async def update_artist_playlist(self):
         global configured_artist
@@ -245,13 +313,13 @@ class GuildMusicState:
                                 'url': url,
                                 'requester': 'Autoplay',
                                 'requester_mention': 'Autoplay',
+                                'requester_id': None,
                                 'requested_at': time.time(),
                                 'thumbnail': entry.get('thumbnail'),
                                 'duration': entry.get('duration'),
                                 'uploader': entry.get('uploader'),
                                 'uploader_url': entry.get('uploader_url'),
                                 'like_count': entry.get('like_count'),
-                                'dislike_count': entry.get('dislike_count'),
                                 'view_count': entry.get('view_count'),
                                 'upload_date': entry.get('upload_date')
                             })
@@ -275,101 +343,130 @@ class GuildMusicState:
                     pass
 
     async def play_next(self):
-        if self.progress_task:
-            self.progress_task.cancel()
-            self.progress_task = None
-            
-        if self.last_controller_message:
-            try:
-                await self.last_controller_message.delete()
-            except Exception:
-                pass
-            self.last_controller_message = None
-
-        if not self.voice_client or not self.voice_client.is_connected():
-            print("[DEBUG] Not connected to voice. Stopping play loop.")
-            self.current_track = None
+        if self.play_lock.locked():
+            print("[DEBUG] play_next is already running, skipping duplicate call.")
             return
 
-        next_track = None
+        async with self.play_lock:
+            if self.voice_client and self.voice_client.is_playing():
+                print("[DEBUG] Voice client is already playing, skipping play_next.")
+                return
 
-        # 1. Handle looping of current song
-        if self.loop_mode == 'song' and self.current_track:
-            next_track = self.current_track
-        else:
-            # If we were looping queue, add the finished track back to the end
-            if self.loop_mode == 'queue' and self.current_track:
-                self.queue.append(self.current_track)
-
-            # 2. Check user queue
-            while self.queue:
-                track = self.queue.pop(0)
-                if not is_blacklisted(track['title'], track['url']):
-                    next_track = track
-                    break
-                else:
-                    await self.send_message(f"Skipped blacklisted song in queue: **{track['title']}**")
-
-            # 3. Fallback to artist autoplay
-            if not next_track:
-                if not self.artist_playlist:
-                    await self.update_artist_playlist()
+            if self.progress_task:
+                self.progress_task.cancel()
+                self.progress_task = None
                 
-                attempts = 0
-                while self.artist_playlist and attempts < len(self.artist_playlist):
-                    track = self.artist_playlist[self.artist_index]
-                    self.artist_index = (self.artist_index + 1) % len(self.artist_playlist)
-                    attempts += 1
-                    
+            if self.last_controller_message:
+                try:
+                    await self.last_controller_message.delete()
+                except Exception:
+                    pass
+                self.last_controller_message = None
+
+            if not self.voice_client or not self.voice_client.is_connected():
+                print("[DEBUG] Not connected to voice. Stopping play loop.")
+                self.current_track = None
+                return
+
+            next_track = None
+
+            if self.loop_mode == 'song' and self.current_track:
+                next_track = self.current_track
+            else:
+                if self.loop_mode == 'queue' and self.current_track:
+                    self.queue.append(self.current_track)
+
+                while self.queue:
+                    track = self.queue.pop(0)
                     if not is_blacklisted(track['title'], track['url']):
                         next_track = track
                         break
+                    else:
+                        await self.send_message(f"Skipped blacklisted song in queue: **{track['title']}**")
 
-        if not next_track:
-            self.current_track = None
-            await self.send_message("Queue and autoplay playlist are empty. Stopping playback.")
-            return
+                if not next_track:
+                    if not self.artist_playlist:
+                        await self.update_artist_playlist()
+                    
+                    attempts = 0
+                    while self.artist_playlist and attempts < len(self.artist_playlist):
+                        track = self.artist_playlist[self.artist_index]
+                        self.artist_index = (self.artist_index + 1) % len(self.artist_playlist)
+                        attempts += 1
+                        
+                        if not is_blacklisted(track['title'], track['url']):
+                            next_track = track
+                            break
 
-        self.current_track = next_track
-        self.start_time = time.monotonic()
-        self.elapsed_offset = 0.0
+            if not next_track:
+                self.current_track = None
+                await self.send_message("Queue and autoplay playlist are empty. Stopping playback.")
+                return
 
-        try:
-            print(f"[DEBUG] Resolving stream URL for: {next_track['title']}")
-            data = await self.bot.loop.run_in_executor(
-                None, lambda: ytdl.extract_info(next_track['url'], download=False)
-            )
-            stream_url = data.get('url')
-            
-            # Fetch metadata details if not present (e.g. from user search inputs)
-            self.current_track['thumbnail'] = data.get('thumbnail')
-            self.current_track['duration'] = data.get('duration')
-            self.current_track['uploader'] = data.get('uploader')
-            self.current_track['uploader_url'] = data.get('uploader_url')
-            self.current_track['like_count'] = data.get('like_count')
-            self.current_track['dislike_count'] = data.get('dislike_count')
-            self.current_track['view_count'] = data.get('view_count')
-            self.current_track['upload_date'] = data.get('upload_date')
-            
-            import sys
-            player = YTDLSource(discord.FFmpegPCMAudio(stream_url, stderr=sys.stderr, **ffmpeg_options), data=data, volume=self.volume)
-            
-            def after_playing(error):
-                if error:
-                    print(f"[DEBUG] Player error: {error}")
+            self.current_track = next_track
+            self.start_time = time.monotonic()
+            self.elapsed_offset = 0.0
+
+            try:
+                print(f"[DEBUG] Resolving stream URL for: {next_track['title']}")
+                data = await self.bot.loop.run_in_executor(
+                    None, lambda: ytdl.extract_info(next_track['url'], download=False)
+                )
+                
+                # Robust extraction of direct format stream URL
+                stream_url = data.get('url')
+                if not stream_url and 'formats' in data:
+                    for fmt in data['formats']:
+                        if fmt.get('url'):
+                            stream_url = fmt['url']
+                            break
+                            
+                if not stream_url:
+                    raise Exception("Could not extract direct audio stream URL from video format telemetry.")
+                
+                self.current_track['thumbnail'] = data.get('thumbnail')
+                self.current_track['duration'] = data.get('duration')
+                self.current_track['uploader'] = data.get('uploader')
+                self.current_track['uploader_url'] = data.get('uploader_url')
+                self.current_track['like_count'] = data.get('like_count')
+                self.current_track['view_count'] = data.get('view_count')
+                self.current_track['upload_date'] = data.get('upload_date')
+                
+                import sys
+                player = YTDLSource(discord.FFmpegPCMAudio(stream_url, stderr=sys.stderr, **ffmpeg_options), data=data, volume=0.0)
+                
+                def after_playing(error):
+                    if error:
+                        print(f"[DEBUG] Player error: {error}")
+                    asyncio.run_coroutine_threadsafe(self.play_next(), self.bot.loop)
+
+                self.voice_client.play(player, after=after_playing)
+                
+                self.consecutive_errors = 0
+                self.write_to_history(self.current_track)
+                
+                from cogs.music import MusicControlView
+                embed = create_now_playing_embed(self)
+                self.last_controller_message = await self.send_message_with_view(embed, MusicControlView(self.bot, self.guild_id))
+                
+                self.progress_task = self.bot.loop.create_task(self.update_progress_loop())
+                self.bot.loop.create_task(self.fade_volume(self.volume, duration=1.5))
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                
+                self.consecutive_errors += 1
+                await self.send_message(f"Error playing track **{next_track['title']}**: {e}")
+                
+                if self.consecutive_errors >= 3:
+                    await self.send_message("Stopped playback due to 3 consecutive playback errors.")
+                    self.consecutive_errors = 0
+                    self.current_track = None
+                    return
+                    
+                await asyncio.sleep(2.0)
                 asyncio.run_coroutine_threadsafe(self.play_next(), self.bot.loop)
-
-            self.voice_client.play(player, after=after_playing)
-            
-            from cogs.music import MusicControlView
-            embed = create_now_playing_embed(self)
-            self.last_controller_message = await self.send_message_with_view(embed, MusicControlView(self.bot, self.guild_id))
-            
-            self.progress_task = self.bot.loop.create_task(self.update_progress_loop())
-            
-        except Exception as e:
-            await self.send_message(f"Error playing track **{next_track['title']}**: {e}")
-            asyncio.run_coroutine_threadsafe(self.play_next(), self.bot.loop)
 
 def get_guild_state(guild_id, bot) -> GuildMusicState:
     if guild_id not in guild_states:
