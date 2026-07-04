@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libffi-dev \
     libopus-dev \
+    ffmpeg \
     curl \
     unzip \
     && rm -rf /var/lib/apt/lists/*

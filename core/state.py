@@ -441,8 +441,7 @@ class GuildMusicState:
                 self.current_track['upload_date'] = data.get('upload_date')
                 
                 import sys
-                import imageio_ffmpeg
-                player = YTDLSource(discord.FFmpegPCMAudio(stream_url, executable=imageio_ffmpeg.get_ffmpeg_exe(), stderr=sys.stderr, **ffmpeg_options), data=data, volume=0.0)
+                player = YTDLSource(discord.FFmpegPCMAudio(stream_url, stderr=sys.stderr, **ffmpeg_options), data=data, volume=0.0)
                 
                 def after_playing(error):
                     if error:

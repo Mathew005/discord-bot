@@ -70,5 +70,4 @@ class YTDLSource(discord.PCMVolumeTransformer):
         print(f"[DEBUG] Successfully extracted. Title: {data.get('title')}")
         filename = data['url'] if stream else ytdl.prepare_filename(data)
         import sys
-        import imageio_ffmpeg
-        return cls(discord.FFmpegPCMAudio(filename, executable=imageio_ffmpeg.get_ffmpeg_exe(), stderr=sys.stderr, **ffmpeg_options), data=data)
+        return cls(discord.FFmpegPCMAudio(filename, stderr=sys.stderr, **ffmpeg_options), data=data)
