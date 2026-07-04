@@ -2,6 +2,8 @@ import discord
 import yt_dlp
 import asyncio
 
+import os
+
 # yt-dlp config
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -12,6 +14,9 @@ ytdl_format_options = {
     'no_warnings': True,
     'default_search': 'ytsearch1',
 }
+
+if os.path.exists("cookies.txt"):
+    ytdl_format_options['cookiefile'] = 'cookies.txt'
 
 ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
