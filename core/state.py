@@ -314,7 +314,8 @@ class GuildMusicState:
                     if entry.get('ie_key') == 'Youtube':
                         title = entry.get('title', 'Unknown')
                         url = entry.get('url')
-                        if not is_blacklisted(title, url):
+                        is_live = entry.get('is_live') is True or entry.get('duration') is None
+                        if not is_live and not is_blacklisted(title, url):
                             playlist.append({
                                 'title': title,
                                 'url': url,
