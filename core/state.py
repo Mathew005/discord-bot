@@ -9,7 +9,7 @@ from core.audio import ytdl, ytdl_format_options, ffmpeg_options, YTDLSource
 from core.filters import is_blacklisted
 
 # Config state shared between cogs
-ALLOWED_CHANNEL_ID = 1523024900602724513
+ALLOWED_CHANNEL_ID = int(os.getenv("ALLOWED_CHANNEL_ID", "1523024900602724513"))
 ARTIST_FILE = "artist.txt"
 guild_states = {}
 
