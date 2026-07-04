@@ -440,8 +440,16 @@ class GuildMusicState:
                 self.current_track['view_count'] = data.get('view_count')
                 self.current_track['upload_date'] = data.get('upload_date')
                 
+                # Extract User-Agent for FFmpeg connection validation
+                user_agent = data.get('http_headers', {}).get('User-Agent')
+                before_opts = ffmpeg_options.get('before_options', '')
+                if user_agent:
+                    before_opts += f' -user_agent "{user_agent}"'
+                    
+                custom_ffmpeg_options = {**ffmpeg_options, 'before_options': before_opts}
+                
                 import sys
-                player = YTDLSource(discord.FFmpegPCMAudio(stream_url, stderr=sys.stderr, **ffmpeg_options), data=data, volume=0.0)
+                player = YTDLSource(discord.FFmpegPCMAudio(stream_url, stderr=sys.stderr, **custom_ffmpeg_options), data=data, volume=0.0)
                 
                 def after_playing(error):
                     if error:

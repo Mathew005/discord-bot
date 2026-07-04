@@ -69,5 +69,14 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
         print(f"[DEBUG] Successfully extracted. Title: {data.get('title')}")
         filename = data['url'] if stream else ytdl.prepare_filename(data)
+        
+        # Extract User-Agent for FFmpeg connection validation
+        user_agent = data.get('http_headers', {}).get('User-Agent')
+        before_opts = ffmpeg_options.get('before_options', '')
+        if user_agent:
+            before_opts += f' -user_agent "{user_agent}"'
+            
+        custom_ffmpeg_options = {**ffmpeg_options, 'before_options': before_opts}
+        
         import sys
-        return cls(discord.FFmpegPCMAudio(filename, stderr=sys.stderr, **ffmpeg_options), data=data)
+        return cls(discord.FFmpegPCMAudio(filename, stderr=sys.stderr, **custom_ffmpeg_options), data=data)
