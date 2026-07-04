@@ -464,6 +464,17 @@ class GuildMusicState:
                 import traceback
                 traceback.print_exc()
                 
+                err_msg = str(e)
+                if "Sign in to confirm you" in err_msg or "confirm you're not a bot" in err_msg.lower():
+                    await self.send_message(
+                        "⚠️ **YouTube Bot Block Detected!**\n"
+                        "YouTube has flagged this VM's IP address and blocked playback. "
+                        "Please export fresh cookies from a Google burner account and update the `cookies.txt` file."
+                    )
+                    self.consecutive_errors = 0
+                    self.current_track = None
+                    return
+
                 self.consecutive_errors += 1
                 await self.send_message(f"Error playing track **{next_track['title']}**: {e}")
                 
