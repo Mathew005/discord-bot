@@ -1,0 +1,32 @@
+name: Deploy PP Bot
+
+on:
+  push:
+    branches:
+      - master # Triggers deployment when you push to master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Oracle VM via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ubuntu
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            # Navigate to workspace
+            cd /home/ubuntu/PP_bot
+            
+            # Fetch latest changes
+            git pull origin master
+            
+            # Activate venv and update packages
+            ./venv/bin/pip install -r requirements.txt
+            
+            # Restart the bot service
+            sudo systemctl restart pp_bot.service
+            
+            # Output service status
+            sudo systemctl status pp_bot.service --no-pager
