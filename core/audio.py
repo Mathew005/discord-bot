@@ -6,7 +6,7 @@ import os
 
 # yt-dlp config
 ytdl_format_options = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio/best[protocol^=http]',
     'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': False,
