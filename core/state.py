@@ -464,12 +464,17 @@ class GuildMusicState:
                 import traceback
                 traceback.print_exc()
                 
-                err_msg = str(e)
-                if "Sign in to confirm you" in err_msg or "confirm you're not a bot" in err_msg.lower():
+                err_msg = str(e).lower()
+                if (
+                    "sign in to confirm you" in err_msg 
+                    or "confirm you're not a bot" in err_msg 
+                    or "no video formats found" in err_msg 
+                    or "requested format is not available" in err_msg
+                ):
                     await self.send_message(
-                        "⚠️ **YouTube Bot Block Detected!**\n"
-                        "YouTube has flagged this VM's IP address and blocked playback. "
-                        "Please export fresh cookies from a Google burner account and update the `cookies.txt` file."
+                        "⚠️ **YouTube Bot Block / Cookie Error Detected!**\n"
+                        "YouTube has blocked playback with a format or bot challenge error. "
+                        "Please export a fresh `cookies.txt` file from your burner Google account and ensure it is saved in the bot folder."
                     )
                     self.consecutive_errors = 0
                     self.current_track = None
