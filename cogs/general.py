@@ -15,7 +15,7 @@ class General(commands.Cog):
         embed = discord.Embed(
             title="PP Bot Help Menu",
             description="Welcome! This bot plays music and includes loops, queues, and persistent filters. Below are all the commands you can use:",
-            color=discord.Color.blurple()
+            color=0xe74709
         )
         
         embed.add_field(
@@ -55,8 +55,26 @@ class General(commands.Cog):
             inline=False
         )
 
+        embed.add_field(
+            name="General",
+            value=(
+                "- `/help` - Show this help menu.\n"
+                "- `/ping` - Check bot latency to Discord."
+            ),
+            inline=False
+        )
+
         embed.set_footer(text="All commands support prefix (e.g. !play) and slash commands (e.g. /play).")
         await ctx.send(embed=embed)
+
+    @commands.hybrid_command(name="ping", description="Check the bot's latency/ping to Discord.")
+    async def ping(self, ctx: commands.Context):
+        if ctx.channel.id != ALLOWED_CHANNEL_ID:
+            await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        latency = round(self.bot.latency * 1000)
+        await ctx.send(f"🏓 Pong! Latency is **{latency}ms**.")
 
 async def setup(bot):
     await bot.add_cog(General(bot))

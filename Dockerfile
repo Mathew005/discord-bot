@@ -1,19 +1,13 @@
 # Use lightweight python base image supporting ARM64 natively
 FROM python:3.11-slim
 
-# Install system dependencies needed for compiling PyNaCl
+# Install system dependencies needed for compiling PyNaCl & Discord voice support
 RUN apt-get update && apt-get install -y \
     build-essential \
     libffi-dev \
     libopus-dev \
     ffmpeg \
-    curl \
-    unzip \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Deno (preferred JS runtime for yt-dlp EJS)
-ENV DENO_INSTALL=/usr/local
-RUN curl -fsSL https://deno.land/install.sh | sh
 
 WORKDIR /app
 

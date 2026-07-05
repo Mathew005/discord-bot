@@ -6,6 +6,7 @@ import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
+import wavelink
 from core.state import guild_states
 
 load_dotenv()
@@ -39,6 +40,17 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
+async def setup_hook():
+    lavalink_uri = os.getenv("LAVALINK_URI", "http://lavalink.jirayu.net:13592")
+    lavalink_password = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
+    
+    logging.info(f"Connecting to Lavalink node ({lavalink_uri})...")
+    node = wavelink.Node(uri=lavalink_uri, password=lavalink_password)
+    await wavelink.Pool.connect(nodes=[node], client=bot)
+    logging.info("Wavelink node connection request sent.")
+
+bot.setup_hook = setup_hook
+
 @bot.event
 async def on_ready():
     logging.info(f"Bot logged in as {bot.user}")
@@ -63,8 +75,6 @@ async def on_voice_state_update(member, before, after):
             if state:
                 print(f"[DEBUG] Bot was disconnected from voice channel in guild {before.channel.guild.name}. Cleaning up.")
                 state.voice_client = None
-                state.current_track = None
-                state.queue.clear()
             return
         elif before.channel and after.channel and before.channel != after.channel:
             state = guild_states.get(after.channel.guild.id)
@@ -77,15 +87,18 @@ async def on_voice_state_update(member, before, after):
     if before.channel:
         voice_client = before.channel.guild.voice_client
         if voice_client and voice_client.channel == before.channel:
+            state = guild_states.get(before.channel.guild.id)
+            if state and state.nonstop:
+                # Keep active if nonstop/24/7 is enabled
+                return
+                
             non_bots = [m for m in before.channel.members if not m.bot]
             if len(non_bots) == 0:
                 print(f"[DEBUG] Voice channel {before.channel.name} is empty. Leaving.")
-                await voice_client.disconnect()
-                state = guild_states.get(before.channel.guild.id)
+                if voice_client:
+                    await voice_client.disconnect()
                 if state:
                     state.voice_client = None
-                    state.current_track = None
-                    state.queue.clear()
 
 # ----------------- Extension Loader -----------------
 

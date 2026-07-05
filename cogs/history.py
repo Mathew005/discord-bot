@@ -41,7 +41,7 @@ class History(commands.Cog):
             await ctx.send(f"No playback history found requested by {member.display_name if member else 'anyone'}.", ephemeral=True)
             return
 
-        embed = discord.Embed(title=title_text, color=discord.Color.blurple())
+        embed = discord.Embed(title=title_text, color=0xe74709)
         
         lines = []
         for idx, track in enumerate(filtered_list[:15], 1):

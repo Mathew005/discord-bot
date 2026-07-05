@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 import json
 import time
+import wavelink
 from core.state import get_guild_state, ALLOWED_CHANNEL_ID
 from core.filters import is_blacklisted
 
@@ -21,8 +22,9 @@ class Playlist(commands.Cog):
             return
 
         state = get_guild_state(ctx.guild.id, self.bot)
+        player = state.voice_client
         
-        if not state.current_track and not state.queue:
+        if not player or (not player.current and not player.queue):
             await ctx.send("There is no music playing or queued to save.", ephemeral=True)
             return
 
@@ -36,15 +38,15 @@ class Playlist(commands.Cog):
             return
 
         playlist_tracks = []
-        if state.current_track:
+        if player.current:
             playlist_tracks.append({
-                'title': state.current_track['title'],
-                'url': state.current_track['url']
+                'title': player.current.title,
+                'url': player.current.uri
             })
-        for track in state.queue:
+        for track in player.queue:
             playlist_tracks.append({
-                'title': track['title'],
-                'url': track['url']
+                'title': track.title,
+                'url': track.uri
             })
 
         filepath = f"{guild_dir}/{safe_name}.json"
@@ -88,40 +90,52 @@ class Playlist(commands.Cog):
             await ctx.send(f"Playlist **{safe_name}** is empty.", ephemeral=True)
             return
 
+        channel = ctx.author.voice.channel
+        player = state.voice_client
+        if not player:
+            if ctx.guild.voice_client:
+                state.voice_client = ctx.guild.voice_client
+                player = state.voice_client
+            else:
+                try:
+                    state.voice_client = await channel.connect(cls=wavelink.Player)
+                    player = state.voice_client
+                except Exception as e:
+                    await ctx.send(f"Failed to join voice channel: {e}")
+                    return
+        elif player.channel != channel:
+            await player.move_to(channel)
+
         added_count = 0
         for track_data in loaded_tracks:
             title = track_data.get('title', 'Unknown')
             url = track_data.get('url')
             if url and not is_blacklisted(title, url):
-                state.queue.append({
-                    'title': title,
-                    'url': url,
-                    'requester': ctx.author.display_name,
-                    'requester_mention': ctx.author.mention,
-                    'requester_id': ctx.author.id,
-                    'requester_avatar': ctx.author.display_avatar.url if ctx.author.display_avatar else None,
-                    'requested_at': time.time()
-                })
-                added_count += 1
+                try:
+                    tracks = await wavelink.Playable.search(url)
+                    if tracks:
+                        track = tracks[0]
+                        track.extras = {
+                            'requester': ctx.author.display_name,
+                            'requester_mention': ctx.author.mention,
+                            'requester_avatar': ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+                            'requester_id': ctx.author.id,
+                            'requested_at': time.time()
+                        }
+                        if player.current:
+                            player.queue.put(track)
+                        else:
+                            await player.play(track)
+                            state.write_to_history(track)
+                        added_count += 1
+                except Exception as e:
+                    print(f"Error loading track {title} from playlist: {e}")
 
         if added_count == 0:
             await ctx.send("All songs in the playlist were skipped because they match your blacklist filters.")
             return
 
-        channel = ctx.author.voice.channel
-        if not state.voice_client or not state.voice_client.is_connected():
-            try:
-                state.voice_client = await channel.connect()
-            except Exception as e:
-                await ctx.send(f"Failed to join voice channel: {e}")
-                return
-        elif state.voice_client.channel != channel:
-            await state.voice_client.move_to(channel)
-
         await ctx.send(f"Loaded {added_count} songs from playlist **{safe_name}** into the queue.")
-
-        if not state.voice_client.is_playing() and not state.voice_client.is_paused():
-            await state.play_next()
 
     @playlist.command(name="list", description="List all saved playlists for this server.")
     async def list_playlists(self, ctx: commands.Context):
