@@ -65,7 +65,15 @@ class General(commands.Cog):
         )
 
         embed.set_footer(text="All commands support prefix (e.g. !play) and slash commands (e.g. /play).")
-        await ctx.send(embed=embed)
+        
+        # Delete user command message if it was a prefix command
+        if ctx.interaction is None:
+            try:
+                await ctx.message.delete()
+            except Exception:
+                pass
+                
+        await ctx.send(embed=embed, ephemeral=True)
 
     @commands.hybrid_command(name="ping", description="Check the bot's latency/ping to Discord.")
     async def ping(self, ctx: commands.Context):
