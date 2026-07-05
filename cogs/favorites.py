@@ -49,6 +49,7 @@ class FavoritesSelect(discord.ui.Select):
         if not state.voice_client:
             try:
                 state.voice_client = await interaction.user.voice.channel.connect(cls=wavelink.Player)
+                state.text_channel = interaction.channel
             except discord.Forbidden:
                 await interaction.followup.send("❌ **Permissions Required:** I don't have permission to connect or speak in your voice channel. Please verify that my role has **Connect** and **Speak** permissions in this channel's settings!", ephemeral=True)
                 return
@@ -214,6 +215,7 @@ class Favorites(commands.Cog):
         if not state.voice_client:
             try:
                 state.voice_client = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+                state.text_channel = ctx.channel
             except discord.Forbidden:
                 await ctx.send("❌ **Permissions Required:** I don't have permission to connect or speak in your voice channel.", ephemeral=True)
                 return

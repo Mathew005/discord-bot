@@ -269,14 +269,11 @@ class MusicControlView(discord.ui.View):
             await interaction.response.send_message("You must be in the same voice channel to control playback.", ephemeral=True)
             return
             
+        await state.handle_disconnect()
         await player.disconnect()
-        state.voice_client = None
-            
-        for child in self.children:
-            child.disabled = True
             
         embed = discord.Embed(title="Stopped", description="Playback stopped and bot disconnected.", color=THEME_COLOR)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji=EMOJIS["shuffle"], style=discord.ButtonStyle.secondary, row=3, custom_id="music_ctrl_shuffle")
     async def shuffle(self, interaction: discord.Interaction, button: discord.ui.Button):

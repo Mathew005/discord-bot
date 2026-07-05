@@ -91,7 +91,9 @@ def create_now_playing_embed(state):
     extras = dict(track.extras) if hasattr(track, 'extras') and track.extras else {}
     req_mention = extras.get('requester_mention', 'Autoplay')
     
-    if duration == 0:
+    if player.paused:
+        status_parts.append("⏸️ PAUSED")
+    elif duration == 0:
         status_parts.append("🔴 LIVE")
     elif req_mention == 'Autoplay':
         status_parts.append("🔄 AUTOPLAY")

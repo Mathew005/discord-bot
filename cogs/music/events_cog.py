@@ -54,14 +54,14 @@ class MusicEvents(commands.Cog):
                 state.alone_since = None
                 
             # --- Check B: Idle Player (5-minute countdown) ---
-            is_idle = (player.current is None and not player.queue and not state.autoplay_enabled)
-            if is_idle:
+            is_idle = (player.current is None and not player.queue and not state.autoplay_enabled) or player.paused
+            if is_idle and not state.nonstop:
                 if state.idle_since is None:
                     state.idle_since = time.time()
-                    logging.info(f"[Inactivity] Player is idle in guild '{player.guild.name}'. Starting 5-minute countdown.")
+                    logging.info(f"[Inactivity] Player is idle/paused in guild '{player.guild.name}'. Starting 5-minute countdown.")
                 elif time.time() - state.idle_since >= 300:
-                    logging.info(f"[Inactivity] Disconnecting due to idle player in guild {player.guild.name} (elapsed: 5 minutes).")
-                    await state.send_message("Disconnected due to inactivity (player idle).")
+                    logging.info(f"[Inactivity] Disconnecting due to idle/paused player in guild {player.guild.name} (elapsed: 5 minutes).")
+                    await state.send_message("Disconnected due to inactivity (player idle/paused).")
                     try:
                         await player.disconnect()
                     except Exception:

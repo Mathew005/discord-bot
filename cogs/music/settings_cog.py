@@ -167,6 +167,7 @@ class MusicSettings(commands.Cog):
         state = get_guild_state(ctx.guild.id, self.bot)
         enabled = (status == 'on')
         state.autoplay_enabled = enabled
+        await state.update_controller()
         
         # If enabled and the player is idle, trigger autoplay
         if enabled:
@@ -193,16 +194,7 @@ class MusicSettings(commands.Cog):
 
         state = get_guild_state(ctx.guild.id, self.bot)
         state.nonstop = (status == 'on')
-        
-        # Update nonstop status badge in the active Now Playing embed if possible
-        player = state.voice_client
-        if player and player.current:
-            try:
-                embed = state_module.create_now_playing_embed(state)
-                if state.last_controller_message:
-                    await state.last_controller_message.edit(embed=embed)
-            except Exception:
-                pass
+        await state.update_controller()
                 
         await ctx.send(f"24/7 Mode turned **{status.upper()}**.")
 

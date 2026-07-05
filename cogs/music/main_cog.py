@@ -56,6 +56,37 @@ class Music(commands.Cog):
                     await ctx.send("Could not find any playable tracks for that query.")
                     return
                 
+                if isinstance(tracks, wavelink.Playlist):
+                    playlist_tracks = tracks.tracks
+                    added_count = 0
+                    skipped_count = 0
+                    first_play = player.current is None
+                    
+                    for t in playlist_tracks:
+                        if is_blacklisted(t.title, t.uri):
+                            skipped_count += 1
+                            continue
+                        t.extras = {
+                            'requester': ctx.author.display_name,
+                            'requester_mention': ctx.author.mention,
+                            'requester_avatar': ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+                            'requester_id': ctx.author.id,
+                            'requested_at': time.time()
+                        }
+                        if first_play:
+                            await player.play(t)
+                            state.write_to_history(t)
+                            first_play = False
+                        else:
+                            player.queue.put(t)
+                        added_count += 1
+                        
+                    msg = f"🎶 Loaded **{added_count}** tracks from playlist."
+                    if skipped_count > 0:
+                        msg += f" (Skipped **{skipped_count}** blacklisted tracks)"
+                    await ctx.send(msg)
+                    return
+                
                 track = tracks[0]
                 if is_blacklisted(track.title, track.uri):
                     await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
@@ -165,6 +196,42 @@ class Music(commands.Cog):
                     await ctx.send("Could not find any playable tracks.")
                     return
 
+                if not player:
+                    state.voice_client = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+                    state.text_channel = ctx.channel
+                    player = state.voice_client
+
+                if isinstance(tracks, wavelink.Playlist):
+                    playlist_tracks = tracks.tracks
+                    added_count = 0
+                    skipped_count = 0
+                    first_play = player.current is None
+                    
+                    for t in playlist_tracks:
+                        if is_blacklisted(t.title, t.uri):
+                            skipped_count += 1
+                            continue
+                        t.extras = {
+                            'requester': ctx.author.display_name,
+                            'requester_mention': ctx.author.mention,
+                            'requester_avatar': ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+                            'requester_id': ctx.author.id,
+                            'requested_at': time.time()
+                        }
+                        if first_play:
+                            await player.play(t)
+                            state.write_to_history(t)
+                            first_play = False
+                        else:
+                            player.queue.put(t)
+                        added_count += 1
+                        
+                    msg = f"🎶 Loaded **{added_count}** tracks from playlist."
+                    if skipped_count > 0:
+                        msg += f" (Skipped **{skipped_count}** blacklisted tracks)"
+                    await ctx.send(msg)
+                    return
+
                 track = tracks[0]
                 if is_blacklisted(track.title, track.uri):
                     await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
@@ -177,11 +244,6 @@ class Music(commands.Cog):
                     'requester_id': ctx.author.id,
                     'requested_at': time.time()
                 }
-
-                if not player:
-                    state.voice_client = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-                    state.text_channel = ctx.channel
-                    player = state.voice_client
 
                 if player.current:
                     player.queue.put(track)
@@ -406,7 +468,12 @@ class Music(commands.Cog):
                     playlist_tracks = list(tracks)
 
                 player.queue.clear()
+                added_count = 0
+                skipped_count = 0
                 for track in playlist_tracks:
+                    if is_blacklisted(track.title, track.uri):
+                        skipped_count += 1
+                        continue
                     track.extras = {
                         'requester': ctx.author.display_name,
                         'requester_mention': ctx.author.mention,
@@ -415,6 +482,11 @@ class Music(commands.Cog):
                         'requested_at': time.time()
                     }
                     player.queue.put(track)
+                    added_count += 1
+
+                if added_count == 0:
+                    await ctx.send("❌ All tracks in this playlist were blacklisted.")
+                    return
 
                 # Set queue to loop mode
                 player.queue.mode = wavelink.QueueMode.loop
@@ -424,7 +496,10 @@ class Music(commands.Cog):
                 await player.play(first_track)
                 state.write_to_history(first_track)
 
-                await ctx.send(f"🎶 **24/7 Playlist Mode Activated:** Loaded and looping **{len(playlist_tracks)}** tracks from playlist.")
+                msg = f"🎶 **24/7 Playlist Mode Activated:** Loaded and looping **{added_count}** tracks from playlist."
+                if skipped_count > 0:
+                    msg += f" (Skipped **{skipped_count}** blacklisted tracks)"
+                await ctx.send(msg)
             except Exception as e:
                 await ctx.send(f"Error loading playlist: {e}")
         else:
@@ -436,6 +511,9 @@ class Music(commands.Cog):
                         await ctx.send("Could not find any playable track.")
                         return
                     track = tracks[0]
+                    if is_blacklisted(track.title, track.uri):
+                        await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
+                        return
                     track.extras = {
                         'requester': ctx.author.display_name,
                         'requester_mention': ctx.author.mention,
@@ -462,6 +540,9 @@ class Music(commands.Cog):
                         return
                         
                     track = tracks[0]
+                    if is_blacklisted(track.title, track.uri):
+                        await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
+                        return
                     track.extras = {
                         'requester': ctx.author.display_name,
                         'requester_mention': ctx.author.mention,
