@@ -1,6 +1,6 @@
 import discord
 import logging
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 import random
 import time
@@ -10,22 +10,7 @@ import wavelink
 from core.filters import is_blacklisted
 from core.state import get_guild_state, ALLOWED_CHANNEL_ID, create_now_playing_embed
 import core.state as state_module
-
-# EMOJIS definitions from the WebP image links
-EMOJIS = {
-    "prev": discord.PartialEmoji(name="prev", id=932896641453801493),
-    "pause": discord.PartialEmoji(name="pause", id=932896007526707271),
-    "next": discord.PartialEmoji(name="next", id=932896007509925918),
-    "mute": discord.PartialEmoji(name="mute", id=932898291522367488),
-    "vol_down": discord.PartialEmoji(name="vol_down", id=932905272060542996),
-    "vol_up": discord.PartialEmoji(name="vol_up", id=932898292084383785),
-    "queue": discord.PartialEmoji(name="queue", id=932908430983823370),
-    "save_fav": discord.PartialEmoji(name="save_fav", id=1073638059838545951),
-    "nonstop": discord.PartialEmoji(name="nonstop", id=1073640166079606935),
-    "loop": discord.PartialEmoji(name="loop", id=932908564949925938),
-    "stop": discord.PartialEmoji(name="stop", id=932908751940382730),
-    "shuffle": discord.PartialEmoji(name="shuffle", id=1073640745774366831),
-}
+from core.config import EMOJIS, THEME_COLOR, FAVORITES_DIR
 
 # ----------------- Interactive Music Playback Controller -----------------
 
@@ -174,7 +159,7 @@ class MusicControlView(discord.ui.View):
     async def queue_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         state = get_guild_state(self.guild_id, self.bot)
         player = state.voice_client
-        embed = discord.Embed(title="Current Music Queue", color=0xe74709)
+        embed = discord.Embed(title="Current Music Queue", color=THEME_COLOR)
         
         if player and player.current:
             embed.description = f"**Now Playing:** [{player.current.title}]({player.current.uri})\n\n"
@@ -206,8 +191,8 @@ class MusicControlView(discord.ui.View):
             return
             
         user_id = interaction.user.id
-        os.makedirs("favorites", exist_ok=True)
-        fav_file = f"favorites/{user_id}.json"
+        os.makedirs(FAVORITES_DIR, exist_ok=True)
+        fav_file = f"{FAVORITES_DIR}/{user_id}.json"
         fav_list = []
         if os.path.exists(fav_file):
             try:
@@ -268,14 +253,20 @@ class MusicControlView(discord.ui.View):
     async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         state = get_guild_state(self.guild_id, self.bot)
         player = state.voice_client
-        if player:
-            await player.disconnect()
-            state.voice_client = None
+        if not player:
+            await interaction.response.send_message("Not connected to a voice channel.", ephemeral=True)
+            return
+        if not interaction.user.voice or interaction.user.voice.channel.id != player.channel.id:
+            await interaction.response.send_message("You must be in the same voice channel to control playback.", ephemeral=True)
+            return
+            
+        await player.disconnect()
+        state.voice_client = None
             
         for child in self.children:
             child.disabled = True
             
-        embed = discord.Embed(title="Stopped", description="Playback stopped and bot disconnected.", color=0xe74709)
+        embed = discord.Embed(title="Stopped", description="Playback stopped and bot disconnected.", color=THEME_COLOR)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(emoji=EMOJIS["shuffle"], style=discord.ButtonStyle.secondary, row=3, custom_id="music_ctrl_shuffle")
@@ -348,6 +339,66 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def cog_load(self):
+        self.inactivity_check.start()
+
+    def cog_unload(self):
+        self.inactivity_check.cancel()
+
+    @tasks.loop(seconds=10)
+    async def inactivity_check(self):
+        for player in list(self.bot.voice_clients):
+            if not isinstance(player, wavelink.Player):
+                continue
+                
+            guild_id = player.guild.id
+            state = get_guild_state(guild_id, self.bot)
+            if not state:
+                continue
+                
+            # --- Check A: Empty Voice Channel (2-minute countdown) ---
+            channel_members = [m for m in player.channel.members if not m.bot]
+            if not channel_members:
+                if not state.nonstop:
+                    if state.alone_since is None:
+                        state.alone_since = time.time()
+                        logging.info(f"[Inactivity] Bot is alone in voice channel '{player.channel.name}' (Guild: {player.guild.name}). Starting 2-minute countdown.")
+                    elif time.time() - state.alone_since >= 120:
+                        logging.info(f"[Inactivity] Disconnecting due to empty channel in guild {player.guild.name} (elapsed: 2 minutes).")
+                        await state.send_message("Disconnected due to inactivity (everyone left the channel).")
+                        try:
+                            await player.disconnect()
+                        except Exception:
+                            pass
+                        state.voice_client = None
+                        state.stop_progress_loop()
+                        state.alone_since = None
+                        state.idle_since = None
+                else:
+                    state.alone_since = None
+            else:
+                state.alone_since = None
+                
+            # --- Check B: Idle Player (5-minute countdown) ---
+            is_idle = (player.current is None and not player.queue and not state.autoplay_enabled)
+            if is_idle:
+                if state.idle_since is None:
+                    state.idle_since = time.time()
+                    logging.info(f"[Inactivity] Player is idle in guild '{player.guild.name}'. Starting 5-minute countdown.")
+                elif time.time() - state.idle_since >= 300:
+                    logging.info(f"[Inactivity] Disconnecting due to idle player in guild {player.guild.name} (elapsed: 5 minutes).")
+                    await state.send_message("Disconnected due to inactivity (player idle).")
+                    try:
+                        await player.disconnect()
+                    except Exception:
+                        pass
+                    state.voice_client = None
+                    state.stop_progress_loop()
+                    state.alone_since = None
+                    state.idle_since = None
+            else:
+                state.idle_since = None
+
     @commands.Cog.listener()
     async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload):
         player = payload.player
@@ -388,6 +439,31 @@ class Music(commands.Cog):
         if state:
             logging.info(f"⏹️ Track ended: '{track.title}' (Reason: {reason})")
             state.stop_progress_loop()
+            
+            # Edit or delete the last controller message
+            if state.last_controller_message:
+                if state.nonstop:
+                    try:
+                        await state.last_controller_message.delete()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        small_embed = discord.Embed(
+                            description=f"Played: **[{track.title}]({track.uri})**",
+                            color=THEME_COLOR
+                        )
+                        extras = dict(track.extras) if hasattr(track, 'extras') and track.extras else {}
+                        req_name = extras.get('requester', 'Autoplay')
+                        if extras.get('requester_avatar'):
+                            small_embed.set_footer(text=f"Requested by {req_name}", icon_url=extras.get('requester_avatar'))
+                        else:
+                            small_embed.set_footer(text=f"Requested by {req_name}")
+                        await state.last_controller_message.edit(embed=small_embed, view=None)
+                    except Exception:
+                        pass
+                state.last_controller_message = None
+
             # Save to previous tracks history
             if reason_upper in ['FINISHED', 'STOPPED', 'LOAD_FAILED']:
                 if not state.previous_tracks or state.previous_tracks[-1].uri != track.uri:
@@ -404,7 +480,8 @@ class Music(commands.Cog):
                             await state.play_autoplay()
                     asyncio.create_task(play_later())
 
-    @commands.hybrid_command(name="play", aliases=["p", "start"], description="Play a song, search query, or resume configured artist.")
+    @commands.hybrid_command(name="play", aliases=["p", "start"], description="Play a song from a YouTube/Spotify URL or a search query.")
+    @discord.app_commands.describe(query="The song title, YouTube URL, or playlist link to search and play.")
     async def play(self, ctx: commands.Context, *, query: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
@@ -424,6 +501,9 @@ class Music(commands.Cog):
             else:
                 try:
                     state.voice_client = await channel.connect(cls=wavelink.Player)
+                except discord.Forbidden:
+                    await ctx.send("❌ **Permissions Required:** I don't have permission to connect or speak in your voice channel. Please verify that my role has **Connect** and **Speak** permissions in this channel's settings!", ephemeral=True)
+                    return
                 except Exception as e:
                     await ctx.send(f"Failed to join voice channel: {e}", ephemeral=True)
                     return
@@ -446,7 +526,7 @@ class Music(commands.Cog):
                 
                 track = tracks[0]
                 if is_blacklisted(track.title, track.uri):
-                    await ctx.send(f"Cannot play **{track.title}** as it matches blacklisted keywords.")
+                    await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
                     return
 
                 track.extras = {
@@ -477,6 +557,7 @@ class Music(commands.Cog):
                 await ctx.send("Already playing music! Use `/queue <query>` to add a song.", ephemeral=True)
 
     @commands.hybrid_command(name="playnext", aliases=["pn"], description="Add a song to the front of the queue to play next.")
+    @discord.app_commands.describe(query="The song title or URL to queue next.")
     async def playnext(self, ctx: commands.Context, *, query: str):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
@@ -500,7 +581,7 @@ class Music(commands.Cog):
 
             track = tracks[0]
             if is_blacklisted(track.title, track.uri):
-                await ctx.send(f"Cannot play next **{track.title}** as it matches blacklisted keywords.")
+                await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
                 return
 
             track.extras = {
@@ -515,7 +596,11 @@ class Music(commands.Cog):
                 if ctx.guild.voice_client:
                     state.voice_client = ctx.guild.voice_client
                 else:
-                    state.voice_client = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+                    try:
+                        state.voice_client = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+                    except discord.Forbidden:
+                        await ctx.send("❌ **Permissions Required:** I don't have permission to connect or speak in your voice channel. Please verify that my role has **Connect** and **Speak** permissions in this channel's settings!", ephemeral=True)
+                        return
 
             player = state.voice_client
             if player.current:
@@ -528,7 +613,8 @@ class Music(commands.Cog):
         except Exception as e:
             await ctx.send(f"Error resolving query: {e}")
 
-    @commands.hybrid_command(name="queue", aliases=["q"], description="Add a song to the end of the queue or view the current queue.")
+    @commands.hybrid_command(name="queue", aliases=["q"], description="Add a song to the end of the queue, or view the queue if query is empty.")
+    @discord.app_commands.describe(query="Optional song title or URL to add to the end of the queue.")
     async def queue(self, ctx: commands.Context, *, query: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
@@ -555,7 +641,7 @@ class Music(commands.Cog):
 
                 track = tracks[0]
                 if is_blacklisted(track.title, track.uri):
-                    await ctx.send(f"Cannot queue **{track.title}** as it matches blacklisted keywords.")
+                    await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
                     return
 
                 track.extras = {
@@ -570,7 +656,11 @@ class Music(commands.Cog):
                     if ctx.guild.voice_client:
                         state.voice_client = ctx.guild.voice_client
                     else:
-                        state.voice_client = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+                        try:
+                            state.voice_client = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+                        except discord.Forbidden:
+                            await ctx.send("❌ **Permissions Required:** I don't have permission to connect or speak in your voice channel. Please verify that my role has **Connect** and **Speak** permissions in this channel's settings!", ephemeral=True)
+                            return
                     player = state.voice_client
 
                 if player.current:
@@ -583,7 +673,7 @@ class Music(commands.Cog):
             except Exception as e:
                 await ctx.send(f"Error resolving query: {e}")
         else:
-            embed = discord.Embed(title="Current Music Queue", color=0xe74709)
+            embed = discord.Embed(title="Current Music Queue", color=THEME_COLOR)
             
             if player and player.current:
                 embed.description = f"**Now Playing:** [{player.current.title}]({player.current.uri}) (Requested by: {player.current.extras.get('requester', 'Autoplay')})\n\n"
@@ -656,6 +746,7 @@ class Music(commands.Cog):
         await ctx.send(embed=embed, view=view)
 
     @commands.hybrid_command(name="volume", aliases=["v"], description="Adjust the playback volume (0-100).")
+    @discord.app_commands.describe(vol="The volume level to set, from 0 to 100.")
     async def volume(self, ctx: commands.Context, vol: int):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
@@ -679,6 +770,7 @@ class Music(commands.Cog):
         await ctx.send(f"Volume adjusted to **{vol}%**")
 
     @commands.hybrid_command(name="loop", description="Change the loop mode (song, off).")
+    @discord.app_commands.describe(mode="The loop mode to set: 'song' to loop current track, or 'off' to disable.")
     async def loop(self, ctx: commands.Context, mode: str):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
@@ -774,6 +866,7 @@ class Music(commands.Cog):
             await ctx.send("Playback is not currently paused.", ephemeral=True)
 
     @commands.hybrid_command(name="remove", description="Remove a specific song from the queue by its index.")
+    @discord.app_commands.describe(index="The 1-based index number of the song to remove from the queue.")
     async def remove(self, ctx: commands.Context, index: int):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
@@ -815,6 +908,37 @@ class Music(commands.Cog):
         player.queue.clear()
         await ctx.send("Queue cleared.")
 
+    @commands.hybrid_command(name="summon", aliases=["move", "join"], description="Summon or move the bot to your current voice channel.")
+    async def summon(self, ctx: commands.Context):
+        if ctx.channel.id != ALLOWED_CHANNEL_ID:
+            await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+            
+        if not ctx.author.voice:
+            await ctx.send("You need to join a voice channel first!", ephemeral=True)
+            return
+            
+        channel = ctx.author.voice.channel
+        state = get_guild_state(ctx.guild.id, self.bot)
+        state.text_channel = ctx.channel
+        
+        if not state.voice_client:
+            if ctx.guild.voice_client:
+                state.voice_client = ctx.guild.voice_client
+            else:
+                try:
+                    state.voice_client = await channel.connect(cls=wavelink.Player)
+                except discord.Forbidden:
+                    await ctx.send("❌ **Permissions Required:** I don't have permission to connect or speak in your voice channel. Please verify that my role has **Connect** and **Speak** permissions in this channel's settings!", ephemeral=True)
+                    return
+                except Exception as e:
+                    await ctx.send(f"Failed to join voice channel: {e}", ephemeral=True)
+                    return
+            await ctx.send(f"Joined **{channel.name}**.")
+        else:
+            await state.voice_client.move_to(channel)
+            await ctx.send(f"Moved to **{channel.name}**.")
+
     @commands.hybrid_command(name="leave", aliases=["l", "stop", "disconnect", "dc"], description="Disconnect the bot from the voice channel.")
     async def leave(self, ctx: commands.Context):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
@@ -838,6 +962,7 @@ class Music(commands.Cog):
         await ctx.send("Disconnected from voice channel.")
 
     @commands.hybrid_command(name="setartist", aliases=["sa", "set", "artist"], description="Configure the autoplay artist and update immediately if playing autoplay.")
+    @discord.app_commands.describe(artist="The name of the artist to use for autoplay streams.")
     async def setartist(self, ctx: commands.Context, *, artist: str):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)

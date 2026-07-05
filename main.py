@@ -11,6 +11,19 @@ from core.state import guild_states
 
 load_dotenv()
 
+# Startup Dependency Checks
+try:
+    import PyNaCl
+except ImportError:
+    print("CRITICAL ERROR: 'PyNaCl' is not installed! Discord voice support will fail. Please run: pip install PyNaCl")
+    sys.exit(1)
+
+try:
+    import davey
+except ImportError:
+    print("CRITICAL ERROR: 'davey' is not installed! Discord voice E2EE support will fail. Please run: pip install davey")
+    sys.exit(1)
+
 # Configure Logging
 os.makedirs("logs", exist_ok=True)
 logger = logging.getLogger()
@@ -42,13 +55,21 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 async def setup_hook():
-    lavalink_uri = os.getenv("LAVALINK_URI", "http://lavalink.jirayu.net:13592")
-    lavalink_password = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
+    custom_uri = os.getenv("LAVALINK_URI")
+    custom_password = os.getenv("LAVALINK_PASSWORD")
     
-    logging.info(f"Connecting to Lavalink node ({lavalink_uri})...")
-    node = wavelink.Node(uri=lavalink_uri, password=lavalink_password)
-    await wavelink.Pool.connect(nodes=[node], client=bot)
-    logging.info("Wavelink node connection request sent.")
+    nodes = []
+    if custom_uri:
+        logging.info(f"Connecting to custom Lavalink node ({custom_uri})...")
+        nodes.append(wavelink.Node(uri=custom_uri, password=custom_password or ""))
+    else:
+        logging.info("Connecting to public Lavalink failover pool...")
+        from core.config import DEFAULT_LAVALINK_NODES
+        for node_data in DEFAULT_LAVALINK_NODES:
+            nodes.append(wavelink.Node(uri=node_data["uri"], password=node_data["password"]))
+            
+    await wavelink.Pool.connect(nodes=nodes, client=bot)
+    logging.info("Wavelink pool connection requests sent.")
 
 bot.setup_hook = setup_hook
 
@@ -84,23 +105,6 @@ async def on_voice_state_update(member, before, after):
                 print(f"[DEBUG] Bot was moved to channel: {after.channel.name}")
             return
 
-    # 2. Leave if voice channel becomes empty (except for the bot itself)
-    if before.channel:
-        voice_client = before.channel.guild.voice_client
-        if voice_client and voice_client.channel == before.channel:
-            state = guild_states.get(before.channel.guild.id)
-            if state and state.nonstop:
-                # Keep active if nonstop/24/7 is enabled
-                return
-                
-            non_bots = [m for m in before.channel.members if not m.bot]
-            if len(non_bots) == 0:
-                print(f"[DEBUG] Voice channel {before.channel.name} is empty. Leaving.")
-                if voice_client:
-                    await voice_client.disconnect()
-                if state:
-                    state.voice_client = None
-
 # ----------------- Extension Loader -----------------
 
 async def load_extensions():
@@ -110,6 +114,7 @@ async def load_extensions():
     await bot.load_extension("cogs.general")
     await bot.load_extension("cogs.playlist")
     await bot.load_extension("cogs.history")
+    await bot.load_extension("cogs.favorites")
     print("[DEBUG] Loaded all cogs successfully.")
 
 async def main():

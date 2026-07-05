@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from core.state import ALLOWED_CHANNEL_ID
+from core.config import THEME_COLOR
 
 class General(commands.Cog):
     def __init__(self, bot):
@@ -15,7 +16,7 @@ class General(commands.Cog):
         embed = discord.Embed(
             title="PP Bot Help Menu",
             description="Welcome! This bot plays music and includes loops, queues, and persistent filters. Below are all the commands you can use:",
-            color=0xe74709
+            color=THEME_COLOR
         )
         
         embed.add_field(

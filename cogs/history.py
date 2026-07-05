@@ -3,18 +3,20 @@ from discord.ext import commands
 import os
 import json
 from core.state import ALLOWED_CHANNEL_ID
+from core.config import HISTORY_DIR, THEME_COLOR
 
 class History(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @commands.hybrid_command(name="history", description="Show the song playback history of this server, optionally filtered by requester.")
+    @discord.app_commands.describe(member="The server member to filter history by.")
     async def history(self, ctx: commands.Context, member: discord.Member = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
             return
 
-        history_file = f"history/{ctx.guild.id}.json"
+        history_file = f"{HISTORY_DIR}/{ctx.guild.id}.json"
         if not os.path.exists(history_file):
             await ctx.send("No songs have been played on this server yet.", ephemeral=True)
             return
@@ -41,7 +43,7 @@ class History(commands.Cog):
             await ctx.send(f"No playback history found requested by {member.display_name if member else 'anyone'}.", ephemeral=True)
             return
 
-        embed = discord.Embed(title=title_text, color=0xe74709)
+        embed = discord.Embed(title=title_text, color=THEME_COLOR)
         
         lines = []
         for idx, track in enumerate(filtered_list[:15], 1):

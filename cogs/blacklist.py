@@ -8,6 +8,7 @@ class Blacklist(commands.Cog):
         self.bot = bot
 
     @commands.hybrid_command(name="blacklist", aliases=["bl"], description="Blacklist a title or keyword from playing, and skip if currently playing.")
+    @discord.app_commands.describe(keyword="The title, phrase, or keyword to blacklist. Leave empty to blacklist the currently playing track.")
     async def blacklist(self, ctx: commands.Context, *, keyword: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
@@ -38,6 +39,7 @@ class Blacklist(commands.Cog):
                 state.voice_client.stop()
 
     @commands.hybrid_command(name="unblacklist", aliases=["unbl"], description="Remove a keyword or title from the blacklist.")
+    @discord.app_commands.describe(keyword="The blacklisted keyword or title to remove.")
     async def unblacklist(self, ctx: commands.Context, *, keyword: str):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)

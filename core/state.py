@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 
 # Config state shared between cogs
-ALLOWED_CHANNEL_ID = int(os.getenv("ALLOWED_CHANNEL_ID", "1523024900602724513"))
+from core.config import ALLOWED_CHANNEL_ID, THEME_COLOR, HISTORY_DIR
 ARTIST_FILE = "artist.txt"
 guild_states = {}
 
@@ -85,7 +85,28 @@ def create_now_playing_embed(state):
     else:
         duration_str = "Live Stream"
 
-    embed = discord.Embed(color=0xe74709)
+    # Dynamic status badges for the title
+    status_parts = []
+    
+    extras = dict(track.extras) if hasattr(track, 'extras') and track.extras else {}
+    req_mention = extras.get('requester_mention', 'Autoplay')
+    
+    if duration == 0:
+        status_parts.append("🔴 LIVE")
+    elif req_mention == 'Autoplay':
+        status_parts.append("🔄 AUTOPLAY")
+    else:
+        status_parts.append("▶️ PLAYING")
+        
+    if player.queue.mode == wavelink.QueueMode.loop:
+        status_parts.append("🔁 LOOPING SONG")
+        
+    if state.nonstop:
+        status_parts.append("🎛️ 24/7 MODE")
+        
+    status_str = " | ".join(status_parts)
+
+    embed = discord.Embed(title=status_str, color=THEME_COLOR)
     
     embed.add_field(
         name="Currently Playing:",
@@ -153,6 +174,8 @@ class GuildMusicState:
         self.artist_playlist = []
         self.artist_index = 0
         self.update_task = None
+        self.alone_since = None
+        self.idle_since = None
 
     def start_progress_loop(self):
         self.stop_progress_loop()
@@ -192,8 +215,8 @@ class GuildMusicState:
 
     def write_to_history(self, track: wavelink.Playable):
         """Append the track details to a local JSON file representing the server playback history."""
-        os.makedirs("history", exist_ok=True)
-        history_file = f"history/{self.guild_id}.json"
+        os.makedirs(HISTORY_DIR, exist_ok=True)
+        history_file = f"{HISTORY_DIR}/{self.guild_id}.json"
         
         history_list = []
         if os.path.exists(history_file):
