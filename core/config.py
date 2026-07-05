@@ -2,7 +2,7 @@ import discord
 import os
 
 # Allowed Channel for Bot Commands
-ALLOWED_CHANNEL_ID = int(os.getenv("ALLOWED_CHANNEL_ID", "1523024900602724513"))
+ALLOWED_CHANNEL_ID = int(os.getenv("ALLOWED_CHANNEL_ID", "1109041212800913418"))
 
 # Embed Customizations
 THEME_COLOR = 0xe74709
