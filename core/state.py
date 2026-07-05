@@ -3,6 +3,7 @@ import wavelink
 import os
 import time
 import json
+import asyncio
 from datetime import datetime
 
 # Config state shared between cogs
@@ -147,6 +148,28 @@ class GuildMusicState:
         self.autoplay_enabled = True
         self.artist_playlist = []
         self.artist_index = 0
+        self.update_task = None
+
+    def start_progress_loop(self):
+        self.stop_progress_loop()
+        
+        async def loop():
+            while self.voice_client and self.voice_client.current:
+                await asyncio.sleep(10)
+                if self.voice_client and self.voice_client.current and not self.voice_client.paused:
+                    if self.last_controller_message:
+                        try:
+                            embed = create_now_playing_embed(self)
+                            await self.last_controller_message.edit(embed=embed)
+                        except Exception:
+                            pass
+        
+        self.update_task = self.bot.loop.create_task(loop())
+
+    def stop_progress_loop(self):
+        if self.update_task and not self.update_task.done():
+            self.update_task.cancel()
+        self.update_task = None
 
     async def send_message(self, content):
         if self.text_channel:

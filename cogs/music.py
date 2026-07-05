@@ -363,6 +363,7 @@ class Music(commands.Cog):
             embed = create_now_playing_embed(state)
             view = MusicControlView(self.bot, player.guild.id)
             state.last_controller_message = await state.send_message_with_view(embed, view)
+            state.start_progress_loop()
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
@@ -374,6 +375,7 @@ class Music(commands.Cog):
         
         state = get_guild_state(player.guild.id, self.bot)
         if state:
+            state.stop_progress_loop()
             # Save to previous tracks history
             if reason in ['FINISHED', 'STOPPED']:
                 if not state.previous_tracks or state.previous_tracks[-1].uri != track.uri:
