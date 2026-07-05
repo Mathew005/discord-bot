@@ -358,8 +358,10 @@ class GuildMusicState:
         # 2. Stop progress loop
         self.stop_progress_loop()
 
-        # 3. Clear voice client state
+        # 3. Clear voice client state and reset defaults
         self.voice_client = None
+        self.nonstop = False
+        self.autoplay_enabled = True
 
 def get_guild_state(guild_id, bot) -> GuildMusicState:
     if guild_id not in guild_states:

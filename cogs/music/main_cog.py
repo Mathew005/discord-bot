@@ -351,3 +351,136 @@ class Music(commands.Cog):
         await state.handle_disconnect()
         await player.disconnect()
         await ctx.send("Disconnected from voice channel.")
+
+    @commands.hybrid_command(name="pp", description="Start 24/7 playback for a playlist, artist, genre, or song recommendations.")
+    @discord.app_commands.describe(query="A playlist link, artist name, song genre, or song title to start playing 24/7.")
+    async def pp(self, ctx: commands.Context, *, query: str):
+        if ctx.channel.id != ALLOWED_CHANNEL_ID:
+            await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        if not ctx.author.voice:
+            await ctx.send("You need to join a voice channel first!", ephemeral=True)
+            return
+
+        await ctx.defer()
+        
+        state = get_guild_state(ctx.guild.id, self.bot)
+        player = state.voice_client
+        user_channel = ctx.author.voice.channel
+
+        if not player:
+            try:
+                state.voice_client = await user_channel.connect(cls=wavelink.Player)
+                state.text_channel = ctx.channel
+                player = state.voice_client
+            except discord.Forbidden:
+                await ctx.send("❌ **Permissions Required:** I don't have permission to connect or speak in your voice channel. Please verify that my role has **Connect** and **Speak** permissions in this channel's settings!", ephemeral=True)
+                return
+            except Exception as e:
+                await ctx.send(f"Failed to join voice channel: {e}", ephemeral=True)
+                return
+        elif player.channel != user_channel:
+            # Move the bot to the user's channel if it's already connected elsewhere
+            await player.move_to(user_channel)
+            state.text_channel = ctx.channel
+
+        # Turn ON 24/7 nonstop mode
+        state.nonstop = True
+
+        # Check if the query is a playlist link
+        is_playlist = "list=" in query or "playlist" in query
+        
+        if is_playlist:
+            # Load and loop playlist
+            try:
+                tracks = await wavelink.Playable.search(query)
+                if not tracks:
+                    await ctx.send("Could not find any playable tracks in that link.")
+                    return
+
+                # If it is a Playlist object
+                if isinstance(tracks, wavelink.Playlist):
+                    playlist_tracks = tracks.tracks
+                else:
+                    playlist_tracks = list(tracks)
+
+                player.queue.clear()
+                for track in playlist_tracks:
+                    track.extras = {
+                        'requester': ctx.author.display_name,
+                        'requester_mention': ctx.author.mention,
+                        'requester_avatar': ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+                        'requester_id': ctx.author.id,
+                        'requested_at': time.time()
+                    }
+                    player.queue.put(track)
+
+                # Set queue to loop mode
+                player.queue.mode = wavelink.QueueMode.loop
+                state.autoplay_enabled = False # Disable autoplay since we are looping the playlist
+
+                first_track = player.queue.get()
+                await player.play(first_track)
+                state.write_to_history(first_track)
+
+                await ctx.send(f"🎶 **24/7 Playlist Mode Activated:** Loaded and looping **{len(playlist_tracks)}** tracks from playlist.")
+            except Exception as e:
+                await ctx.send(f"Error loading playlist: {e}")
+        else:
+            # Check if it is a direct track URL (not a playlist)
+            if query.startswith("http"):
+                try:
+                    tracks = await wavelink.Playable.search(query)
+                    if not tracks:
+                        await ctx.send("Could not find any playable track.")
+                        return
+                    track = tracks[0]
+                    track.extras = {
+                        'requester': ctx.author.display_name,
+                        'requester_mention': ctx.author.mention,
+                        'requester_avatar': ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+                        'requester_id': ctx.author.id,
+                        'requested_at': time.time()
+                    }
+                    
+                    # Set autoplay to find similar songs to this track name
+                    state.autoplay_enabled = True
+                    await state.change_artist(f"{track.title} radio")
+
+                    await player.play(track)
+                    state.write_to_history(track)
+                    await ctx.send(f"▶️ **Playing 24/7:** **{track.title}** (Autoplay will continue with similar recommendations).")
+                except Exception as e:
+                    await ctx.send(f"Error: {e}")
+            else:
+                # Treat as Artist, Genre, or Song Name
+                try:
+                    tracks = await wavelink.Playable.search(query)
+                    if not tracks:
+                        await ctx.send(f"Could not find anything matching: {query}")
+                        return
+                        
+                    track = tracks[0]
+                    track.extras = {
+                        'requester': ctx.author.display_name,
+                        'requester_mention': ctx.author.mention,
+                        'requester_avatar': ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+                        'requester_id': ctx.author.id,
+                        'requested_at': time.time()
+                    }
+                    
+                    state.autoplay_enabled = True
+                    # Set configured artist to "{query}" so autoplay continues with similar tracks of this artist/genre/song
+                    if track.title.lower() in query.lower() or query.lower() in track.title.lower():
+                        # It is a specific song name search
+                        await state.change_artist(f"{query} radio")
+                    else:
+                        # It is an artist or genre search
+                        await state.change_artist(query)
+
+                    await player.play(track)
+                    state.write_to_history(track)
+                    await ctx.send(f"▶️ **Playing 24/7:** **{track.title}** (Autoplay set to **{state_module.configured_artist}**).")
+                except Exception as e:
+                    await ctx.send(f"Error: {e}")
