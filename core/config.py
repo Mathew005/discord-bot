@@ -33,9 +33,5 @@ DEFAULT_LAVALINK_NODES = [
     {
         "uri": "http://lavalink.jirayu.net:13592",
         "password": "youshallnotpass"
-    },
-    {
-        "uri": "http://proxy.oreshi.com:2333",
-        "password": "https://discord.gg/RPCfvBSUuM"
     }
 ]

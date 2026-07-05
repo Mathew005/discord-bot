@@ -13,7 +13,7 @@ load_dotenv()
 
 # Startup Dependency Checks
 try:
-    import PyNaCl
+    import nacl
 except ImportError:
     print("CRITICAL ERROR: 'PyNaCl' is not installed! Discord voice support will fail. Please run: pip install PyNaCl")
     sys.exit(1)
