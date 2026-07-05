@@ -78,11 +78,11 @@ async def on_ready():
     logging.info(f"Bot logged in as {bot.user}")
     try:
         for guild in bot.guilds:
-            bot.tree.clear_commands(guild=guild)
+            bot.tree.copy_global_to(guild=guild)
             await bot.tree.sync(guild=guild)
-            print(f"Cleared command tree duplicates from guild: {guild.name}")
+            print(f"Synced command tree instantly to guild: {guild.name}")
             
-        # Sync only globally to keep listings clean
+        # Also sync globally for long-term consistency
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} slash commands globally.")
     except Exception as e:

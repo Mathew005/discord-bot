@@ -293,6 +293,13 @@ class GuildMusicState:
         if not self.artist_playlist:
             await self.update_artist_playlist()
             
+        # Fallback to Lofi Girl if autoplay query resolved to an empty playlist
+        if not self.artist_playlist:
+            print("[DEBUG] Autoplay returned empty. Falling back to Lofi Girl stream.")
+            global configured_artist
+            configured_artist = "Lofi Girl"
+            await self.update_artist_playlist()
+            
         if self.artist_playlist:
             track = self.artist_playlist[self.artist_index]
             self.artist_index = (self.artist_index + 1) % len(self.artist_playlist)

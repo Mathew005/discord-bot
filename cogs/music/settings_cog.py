@@ -11,7 +11,7 @@ class MusicSettings(commands.Cog):
 
     @commands.hybrid_command(name="volume", aliases=["v"], description="Adjust the playback volume (0-100).")
     @discord.app_commands.describe(vol="The volume level to set, from 0 to 100.")
-    async def volume(self, ctx: commands.Context, vol: int):
+    async def volume(self, ctx: commands.Context, vol: int = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
             return
@@ -20,6 +20,10 @@ class MusicSettings(commands.Cog):
         player = state.voice_client
         if not player:
             await ctx.send("I'm not in a voice channel.", ephemeral=True)
+            return
+
+        if vol is None:
+            await ctx.send(f"🔊 The current volume is **{player.volume}%**.")
             return
 
         if not ctx.author.voice or ctx.author.voice.channel != player.channel:
@@ -36,20 +40,25 @@ class MusicSettings(commands.Cog):
 
     @commands.hybrid_command(name="loop", description="Change the loop mode (song, off).")
     @discord.app_commands.describe(mode="The loop mode to set: 'song' to loop current track, or 'off' to disable.")
-    async def loop(self, ctx: commands.Context, mode: str):
+    async def loop(self, ctx: commands.Context, mode: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
-            return
-
-        mode = mode.lower().strip()
-        if mode not in ['song', 'off']:
-            await ctx.send("Invalid loop mode. Specify 'song' or 'off'.", ephemeral=True)
             return
 
         state = get_guild_state(ctx.guild.id, self.bot)
         player = state.voice_client
         if not player:
             await ctx.send("I'm not in a voice channel.", ephemeral=True)
+            return
+
+        if mode is None:
+            current_mode = "Looping current track" if player.queue.mode == wavelink.QueueMode.loop else "Normal (Off)"
+            await ctx.send(f"🔁 The current loop mode is: **{current_mode}**.")
+            return
+
+        mode = mode.lower().strip()
+        if mode not in ['song', 'off']:
+            await ctx.send("Invalid loop mode. Specify 'song' or 'off'.", ephemeral=True)
             return
 
         if not ctx.author.voice or ctx.author.voice.channel != player.channel:
@@ -91,7 +100,7 @@ class MusicSettings(commands.Cog):
 
     @commands.hybrid_command(name="remove", description="Remove a specific song from the queue by its index.")
     @discord.app_commands.describe(index="The 1-based index number of the song to remove from the queue.")
-    async def remove(self, ctx: commands.Context, index: int):
+    async def remove(self, ctx: commands.Context, index: int = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
             return
@@ -100,6 +109,10 @@ class MusicSettings(commands.Cog):
         player = state.voice_client
         if not player:
             await ctx.send("I'm not in a voice channel.", ephemeral=True)
+            return
+
+        if index is None:
+            await ctx.send("❌ **Usage:** `/remove <index_number>` (e.g. `/remove 2` or `!remove 1`). You can use `/queue` to see the current queue index numbers.", ephemeral=True)
             return
 
         if not ctx.author.voice or ctx.author.voice.channel != player.channel:
@@ -154,9 +167,14 @@ class MusicSettings(commands.Cog):
 
     @commands.hybrid_command(name="autoplay", description="Toggle autoplay on or off.")
     @discord.app_commands.describe(status="Toggle status: 'on' to enable, or 'off' to disable.")
-    async def autoplay(self, ctx: commands.Context, status: str):
+    async def autoplay(self, ctx: commands.Context, status: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        state = get_guild_state(ctx.guild.id, self.bot)
+        if status is None:
+            await ctx.send(f"🔄 Autoplay is currently **{'ENABLED' if state.autoplay_enabled else 'DISABLED'}**.")
             return
 
         status = status.lower().strip()
@@ -164,7 +182,6 @@ class MusicSettings(commands.Cog):
             await ctx.send("Invalid status. Specify 'on' or 'off'.", ephemeral=True)
             return
 
-        state = get_guild_state(ctx.guild.id, self.bot)
         enabled = (status == 'on')
         state.autoplay_enabled = enabled
         await state.update_controller()
@@ -182,9 +199,14 @@ class MusicSettings(commands.Cog):
 
     @commands.hybrid_command(name="nonstop", aliases=["247"], description="Toggle 24/7 nonprofit mode.")
     @discord.app_commands.describe(status="Toggle status: 'on' to enable, or 'off' to disable.")
-    async def nonstop(self, ctx: commands.Context, status: str):
+    async def nonstop(self, ctx: commands.Context, status: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        state = get_guild_state(ctx.guild.id, self.bot)
+        if status is None:
+            await ctx.send(f"🎛️ 24/7 nonprofit mode is currently **{'ENABLED' if state.nonstop else 'DISABLED'}**.")
             return
 
         status = status.lower().strip()
@@ -192,7 +214,6 @@ class MusicSettings(commands.Cog):
             await ctx.send("Invalid status. Specify 'on' or 'off'.", ephemeral=True)
             return
 
-        state = get_guild_state(ctx.guild.id, self.bot)
         state.nonstop = (status == 'on')
         await state.update_controller()
                 

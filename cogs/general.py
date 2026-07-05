@@ -23,6 +23,7 @@ class General(commands.Cog):
             name="Music Playback",
             value=(
                 "- `/play [query]` - Play a song/query (or resume if paused).\n"
+                "- `/pp [query]` - Start 24/7 stream for playlist, artist, genre or similar songs.\n"
                 "- `/playnext <query>` - Add a song to play next.\n"
                 "- `/queue [query]` - Add a song to the end, or view the current queue.\n"
                 "- `/skip` - Skip the current song.\n"
@@ -31,16 +32,31 @@ class General(commands.Cog):
             ),
             inline=False
         )
+        
+        embed.add_field(
+            name="Custom Playlists & Favorites",
+            value=(
+                "- `/playlist save <name>` - Save the current queue as a playlist.\n"
+                "- `/playlist load <name>` - Load a saved playlist into the queue.\n"
+                "- `/playlist list` - View and select from saved playlists.\n"
+                "- `/playlist delete <name>` - Delete a saved playlist.\n"
+                "- `/favorites load` - Load your personal favorites list into the queue.\n"
+                "- `/favorites list` - Manage and select from your personal favorites."
+            ),
+            inline=False
+        )
 
         embed.add_field(
             name="Controls & Queues",
             value=(
-                "- `/volume <0-100>` - Set playback volume percentage.\n"
-                "- `/loop <song/queue/off>` - Set loop/repeat mode.\n"
+                "- `/volume [vol]` - Set volume percentage, or view current volume level.\n"
+                "- `/loop [song/off]` - Set loop mode, or view current loop mode.\n"
                 "- `/shuffle` - Randomize the upcoming queue list.\n"
-                "- `/remove <index>` - Remove a specific song from queue.\n"
+                "- `/remove [index]` - Remove a specific song from queue, or view usage.\n"
                 "- `/clear` - Remove all songs from the queue.\n"
-                "- `/setartist <artist>` - Set the autoplay artist.\n"
+                "- `/setartist [artist]` - Set the autoplay artist, or view current configuration.\n"
+                "- `/autoplay [on/off]` - Toggle autoplay on or off, or view current status.\n"
+                "- `/nonstop [on/off]` - Toggle 24/7 nonstop mode, or view current status.\n"
                 "- `/leave` - Disconnect from voice and clean up."
             ),
             inline=False

@@ -48,6 +48,10 @@ class Music(commands.Cog):
 
         player = state.voice_client
 
+        # Reset loop mode back to normal when manually playing new songs
+        if player:
+            player.queue.mode = wavelink.QueueMode.normal
+
         if query:
             await ctx.defer()
             try:
@@ -57,7 +61,7 @@ class Music(commands.Cog):
                     return
                 
                 if isinstance(tracks, wavelink.Playlist):
-                    playlist_tracks = tracks.tracks
+                    playlist_tracks = tracks.tracks[:80] # Cap loading at 80 tracks to avoid YouTube rate limits
                     added_count = 0
                     skipped_count = 0
                     first_play = player.current is None
@@ -121,9 +125,13 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="playnext", aliases=["pn"], description="Add a song to the front of the queue to play next.")
     @discord.app_commands.describe(query="The song title or URL to queue next.")
-    async def playnext(self, ctx: commands.Context, *, query: str):
+    async def playnext(self, ctx: commands.Context, *, query: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        if query is None:
+            await ctx.send("❌ **Usage:** `/playnext <query>` (e.g., `/playnext Chill Lofi` or `!pn https://...`).", ephemeral=True)
             return
 
         state = get_guild_state(ctx.guild.id, self.bot)
@@ -201,8 +209,11 @@ class Music(commands.Cog):
                     state.text_channel = ctx.channel
                     player = state.voice_client
 
+                # Reset loop mode back to normal when manually queuing new songs
+                player.queue.mode = wavelink.QueueMode.normal
+
                 if isinstance(tracks, wavelink.Playlist):
-                    playlist_tracks = tracks.tracks
+                    playlist_tracks = tracks.tracks[:80] # Cap loading at 80 tracks to avoid YouTube rate limits
                     added_count = 0
                     skipped_count = 0
                     first_play = player.current is None
@@ -416,9 +427,20 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="pp", description="Start 24/7 playback for a playlist, artist, genre, or song recommendations.")
     @discord.app_commands.describe(query="A playlist link, artist name, song genre, or song title to start playing 24/7.")
-    async def pp(self, ctx: commands.Context, *, query: str):
+    async def pp(self, ctx: commands.Context, *, query: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        if query is None:
+            usage_msg = (
+                "❌ **Usage:** `/pp <query>` (e.g. `/pp Drake` or `!pp <playlist_link>`).\n"
+                "• `/pp <playlist_link>` (loads and loops a playlist 24/7)\n"
+                "• `/pp <artist_name>` (streams random songs from that artist 24/7)\n"
+                "• `/pp <genre_name>` (streams random songs from that genre 24/7)\n"
+                "• `/pp <song_name>` (plays the song and continues with similar recommended tracks 24/7)"
+            )
+            await ctx.send(usage_msg, ephemeral=True)
             return
 
         if not ctx.author.voice:
@@ -447,9 +469,6 @@ class Music(commands.Cog):
             await player.move_to(user_channel)
             state.text_channel = ctx.channel
 
-        # Turn ON 24/7 nonstop mode
-        state.nonstop = True
-
         # Check if the query is a playlist link
         is_playlist = "list=" in query or "playlist" in query
         
@@ -459,13 +478,16 @@ class Music(commands.Cog):
                 tracks = await wavelink.Playable.search(query)
                 if not tracks:
                     await ctx.send("Could not find any playable tracks in that link.")
+                    if not player.current:
+                        await state.handle_disconnect()
+                        await player.disconnect()
                     return
 
                 # If it is a Playlist object
                 if isinstance(tracks, wavelink.Playlist):
-                    playlist_tracks = tracks.tracks
+                    playlist_tracks = tracks.tracks[:80] # Cap loading at 80 tracks to avoid YouTube rate limits
                 else:
-                    playlist_tracks = list(tracks)
+                    playlist_tracks = list(tracks)[:80]
 
                 player.queue.clear()
                 added_count = 0
@@ -486,7 +508,13 @@ class Music(commands.Cog):
 
                 if added_count == 0:
                     await ctx.send("❌ All tracks in this playlist were blacklisted.")
+                    if not player.current:
+                        await state.handle_disconnect()
+                        await player.disconnect()
                     return
+
+                # Success! Turn on nonstop mode now
+                state.nonstop = True
 
                 # Set queue to loop mode
                 player.queue.mode = wavelink.QueueMode.loop
@@ -496,12 +524,15 @@ class Music(commands.Cog):
                 await player.play(first_track)
                 state.write_to_history(first_track)
 
-                msg = f"🎶 **24/7 Playlist Mode Activated:** Loaded and looping **{added_count}** tracks from playlist."
+                msg = f"🎶 **24/7 Playlist Mode Activated:** Loaded and looping **{added_count}** tracks from playlist (capped at 80)."
                 if skipped_count > 0:
                     msg += f" (Skipped **{skipped_count}** blacklisted tracks)"
                 await ctx.send(msg)
             except Exception as e:
                 await ctx.send(f"Error loading playlist: {e}")
+                if not player.current:
+                    await state.handle_disconnect()
+                    await player.disconnect()
         else:
             # Check if it is a direct track URL (not a playlist)
             if query.startswith("http"):
@@ -509,11 +540,21 @@ class Music(commands.Cog):
                     tracks = await wavelink.Playable.search(query)
                     if not tracks:
                         await ctx.send("Could not find any playable track.")
+                        if not player.current:
+                            await state.handle_disconnect()
+                            await player.disconnect()
                         return
                     track = tracks[0]
                     if is_blacklisted(track.title, track.uri):
                         await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
+                        if not player.current:
+                            await state.handle_disconnect()
+                            await player.disconnect()
                         return
+                    
+                    # Success! Turn on nonstop mode now
+                    state.nonstop = True
+
                     track.extras = {
                         'requester': ctx.author.display_name,
                         'requester_mention': ctx.author.mention,
@@ -531,18 +572,31 @@ class Music(commands.Cog):
                     await ctx.send(f"▶️ **Playing 24/7:** **{track.title}** (Autoplay will continue with similar recommendations).")
                 except Exception as e:
                     await ctx.send(f"Error: {e}")
+                    if not player.current:
+                        await state.handle_disconnect()
+                        await player.disconnect()
             else:
                 # Treat as Artist, Genre, or Song Name
                 try:
                     tracks = await wavelink.Playable.search(query)
                     if not tracks:
                         await ctx.send(f"Could not find anything matching: {query}")
+                        if not player.current:
+                            await state.handle_disconnect()
+                            await player.disconnect()
                         return
                         
                     track = tracks[0]
                     if is_blacklisted(track.title, track.uri):
                         await ctx.send(f"⚠️ **Blacklist Filter Triggered:** The track **{track.title}** was skipped because it contains filtered keywords.")
+                        if not player.current:
+                            await state.handle_disconnect()
+                            await player.disconnect()
                         return
+                    
+                    # Success! Turn on nonstop mode now
+                    state.nonstop = True
+
                     track.extras = {
                         'requester': ctx.author.display_name,
                         'requester_mention': ctx.author.mention,
@@ -565,3 +619,6 @@ class Music(commands.Cog):
                     await ctx.send(f"▶️ **Playing 24/7:** **{track.title}** (Autoplay set to **{state_module.configured_artist}**).")
                 except Exception as e:
                     await ctx.send(f"Error: {e}")
+                    if not player.current:
+                        await state.handle_disconnect()
+                        await player.disconnect()
