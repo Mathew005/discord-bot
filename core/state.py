@@ -111,9 +111,13 @@ def create_now_playing_embed(state):
     
     if player.queue:
         next_song = player.queue[0]
-        embed.add_field(name="Next", value=f"`{next_song.title}`", inline=False)
+        embed.add_field(name="Next", value=f"[{next_song.title}]({next_song.uri})", inline=False)
     else:
-        embed.add_field(name="Next", value=f"`Autoplay: {configured_artist} will continue`" if state.autoplay_enabled else "`End of queue`", inline=False)
+        if state.autoplay_enabled and state.artist_playlist:
+            next_song = state.artist_playlist[state.artist_index]
+            embed.add_field(name="Next (Autoplay)", value=f"[{next_song.title}]({next_song.uri})", inline=False)
+        else:
+            embed.add_field(name="Next", value=f"`Autoplay: {configured_artist} will continue`" if state.autoplay_enabled else "`End of queue`", inline=False)
         
     if track.artwork:
         embed.set_thumbnail(url=track.artwork)

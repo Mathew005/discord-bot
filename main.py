@@ -24,13 +24,14 @@ logger.addHandler(file_handler)
 
 # Console handler
 console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
 console_formatter = logging.Formatter('%(levelname)s: %(message)s')
 console_handler.setFormatter(console_formatter)
 logger.addHandler(console_handler)
 
-# Suppress overly verbose discord.py debug logs
-logging.getLogger('discord').setLevel(logging.INFO)
+# Suppress overly verbose library debug logs
+logging.getLogger('discord').setLevel(logging.WARNING)
+logging.getLogger('wavelink').setLevel(logging.WARNING)
 
 # Force UTF-8 encoding for stdout on Windows
 if sys.platform == "win32":

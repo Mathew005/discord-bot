@@ -1,4 +1,5 @@
 import discord
+import logging
 from discord.ext import commands
 import asyncio
 import random
@@ -188,7 +189,11 @@ class MusicControlView(discord.ui.View):
                 upcoming_list.append(f"*...and {len(player.queue) - 10} more songs*")
             embed.add_field(name="Upcoming Queue:", value="\n".join(upcoming_list), inline=False)
         else:
-            embed.add_field(name="Upcoming Queue:", value="Queue is empty.", inline=False)
+            if state.autoplay_enabled and state.artist_playlist:
+                next_song = state.artist_playlist[state.artist_index]
+                embed.add_field(name="Upcoming Queue:", value=f"🎶 **Autoplay Next:** [{next_song.title}]({next_song.uri})", inline=False)
+            else:
+                embed.add_field(name="Upcoming Queue:", value="Queue is empty.", inline=False)
             
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -352,6 +357,7 @@ class Music(commands.Cog):
         
         state = get_guild_state(player.guild.id, self.bot)
         if state:
+            logging.info(f"▶️ Started playing track: '{track.title}' (by {track.author})")
             # Delete old controller message to prevent chat clutter
             if state.last_controller_message:
                 try:
@@ -364,6 +370,10 @@ class Music(commands.Cog):
             view = MusicControlView(self.bot, player.guild.id)
             state.last_controller_message = await state.send_message_with_view(embed, view)
             state.start_progress_loop()
+            
+            # Pre-fetch autoplay playlist if empty
+            if state.autoplay_enabled and not state.artist_playlist:
+                asyncio.create_task(state.update_artist_playlist())
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
@@ -375,20 +385,21 @@ class Music(commands.Cog):
         
         state = get_guild_state(player.guild.id, self.bot)
         if state:
+            logging.info(f"⏹️ Track ended: '{track.title}' (Reason: {reason})")
             state.stop_progress_loop()
             # Save to previous tracks history
-            if reason in ['FINISHED', 'STOPPED']:
+            if reason in ['FINISHED', 'STOPPED', 'LOAD_FAILED']:
                 if not state.previous_tracks or state.previous_tracks[-1].uri != track.uri:
                     state.previous_tracks.append(track)
                     if len(state.previous_tracks) > 50:
                         state.previous_tracks.pop(0)
                         
-            # If finished Normally or stopped (skipped) and queue is empty, trigger artist autoplay
-            if reason in ['FINISHED', 'STOPPED'] and not player.queue and state.autoplay_enabled:
+            # If finished Normally, stopped (skipped), or failed to load, and queue is empty, trigger artist autoplay
+            if reason in ['FINISHED', 'STOPPED', 'LOAD_FAILED'] and not player.queue and state.autoplay_enabled:
                 if state.voice_client:
                     async def play_later():
                         await asyncio.sleep(0.5)
-                        if state.voice_client and not state.voice_client.current:
+                        if state.voice_client and (not state.voice_client.current or state.voice_client.current == track):
                             await state.play_autoplay()
                     asyncio.create_task(play_later())
 
@@ -588,7 +599,11 @@ class Music(commands.Cog):
                 
                 embed.add_field(name="Upcoming Queue:", value="\n".join(upcoming_list), inline=False)
             else:
-                embed.add_field(name="Upcoming Queue:", value="Queue is empty. Autoplay will play tracks from the configured artist.", inline=False)
+                if state.autoplay_enabled and state.artist_playlist:
+                    next_song = state.artist_playlist[state.artist_index]
+                    embed.add_field(name="Upcoming Queue:", value=f"🎶 **Autoplay Next:** [{next_song.title}]({next_song.uri})", inline=False)
+                else:
+                    embed.add_field(name="Upcoming Queue:", value="Queue is empty.", inline=False)
 
             loop_str = "Looping song" if (player and player.queue.mode == wavelink.QueueMode.loop) else "Off"
             embed.add_field(name="Loop Mode", value=f"`{loop_str}`", inline=True)
