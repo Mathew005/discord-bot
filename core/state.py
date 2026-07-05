@@ -71,15 +71,6 @@ def get_progress_bar_str(player: wavelink.Player):
         
     return f"{fmt_time(elapsed)}  [{bar}]  {fmt_time(duration)}"
 
-def get_status_emoji(bot, emoji_name, fallback_unicode):
-    # Dynamic workaround: Search bot cache first, then fallback to configured ID or unicode emoji
-    emoji = discord.utils.get(bot.emojis, name=emoji_name)
-    if emoji:
-        return str(emoji)
-    if emoji_name in EMOJIS:
-        return str(EMOJIS[emoji_name])
-    return fallback_unicode
-
 def create_now_playing_embed(state):
     player: wavelink.Player = state.voice_client
     track = player.current if player else None
@@ -100,19 +91,18 @@ def create_now_playing_embed(state):
     extras = dict(track.extras) if hasattr(track, 'extras') and track.extras else {}
     req_mention = extras.get('requester_mention', 'Autoplay')
     
-    bot = state.bot
     if duration == 0:
         status_parts.append("🔴 LIVE")
     elif req_mention == 'Autoplay':
-        status_parts.append(f"{get_status_emoji(bot, 'queue', '🔄')} AUTOPLAY")
+        status_parts.append("🔄 AUTOPLAY")
     else:
         status_parts.append("▶️ PLAYING")
         
     if player.queue.mode == wavelink.QueueMode.loop:
-        status_parts.append(f"{get_status_emoji(bot, 'loop', '🔁')} LOOPING SONG")
+        status_parts.append("🔁 LOOPING SONG")
         
     if state.nonstop:
-        status_parts.append(f"{get_status_emoji(bot, 'nonstop', '🎛️')} 24/7 MODE")
+        status_parts.append("🎛️ 24/7 MODE")
         
     status_str = " | ".join(status_parts)
 
@@ -326,11 +316,13 @@ class GuildMusicState:
         await self.update_artist_playlist()
         
         # Update the currently active controller message embed if there is one
-        if self.voice_client and self.voice_client.current:
+        await self.update_controller()
+
+    async def update_controller(self):
+        if self.last_controller_message and self.voice_client and self.voice_client.current:
             try:
                 embed = create_now_playing_embed(self)
-                if self.last_controller_message:
-                    await self.last_controller_message.edit(embed=embed)
+                await self.last_controller_message.edit(embed=embed)
             except Exception:
                 pass
 

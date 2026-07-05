@@ -31,6 +31,7 @@ class MusicSettings(commands.Cog):
             return
 
         await player.set_volume(vol)
+        await state.update_controller()
         await ctx.send(f"Volume adjusted to **{vol}%**")
 
     @commands.hybrid_command(name="loop", description="Change the loop mode (song, off).")
@@ -57,9 +58,11 @@ class MusicSettings(commands.Cog):
 
         if mode == 'song':
             player.queue.mode = wavelink.QueueMode.loop
+            await state.update_controller()
             await ctx.send("Loop mode enabled: **Looping current track**.")
         else:
             player.queue.mode = wavelink.QueueMode.normal
+            await state.update_controller()
             await ctx.send("Loop mode disabled.")
 
     @commands.hybrid_command(name="shuffle", description="Shuffle the current queue.")
@@ -83,6 +86,7 @@ class MusicSettings(commands.Cog):
             return
 
         player.queue.shuffle()
+        await state.update_controller()
         await ctx.send("Queue shuffled successfully!")
 
     @commands.hybrid_command(name="remove", description="Remove a specific song from the queue by its index.")
@@ -108,6 +112,7 @@ class MusicSettings(commands.Cog):
 
         removed_track = player.queue[index - 1]
         del player.queue[index - 1]
+        await state.update_controller()
         await ctx.send(f"Removed **{removed_track.title}** from the queue.")
 
     @commands.hybrid_command(name="clear", description="Clear all songs in the queue.")
@@ -127,6 +132,7 @@ class MusicSettings(commands.Cog):
             return
 
         player.queue.clear()
+        await state.update_controller()
         await ctx.send("Queue cleared.")
 
     @commands.hybrid_command(name="setartist", aliases=["sa", "set", "artist"], description="Configure the autoplay artist and update immediately if playing autoplay.")
