@@ -293,12 +293,15 @@ class GuildMusicState:
         if not self.artist_playlist:
             await self.update_artist_playlist()
             
-        # Fallback to Lofi Girl if autoplay query resolved to an empty playlist
+        # Fallback if autoplay query resolved to an empty playlist
         if not self.artist_playlist:
-            print("[DEBUG] Autoplay returned empty. Falling back to Lofi Girl stream.")
-            global configured_artist
-            configured_artist = "Lofi Girl"
-            await self.update_artist_playlist()
+            default_artist = load_configured_artist()
+            # If the saved artist is the one that just failed, or is a temporary radio stream, fallback to Lofi Girl
+            if default_artist.lower() == configured_artist.lower() or "radio" in default_artist.lower():
+                default_artist = "Lofi Girl"
+                
+            print(f"[DEBUG] Autoplay returned empty. Falling back to stream: {default_artist}")
+            await self.change_artist(default_artist)
             
         if self.artist_playlist:
             track = self.artist_playlist[self.artist_index]
