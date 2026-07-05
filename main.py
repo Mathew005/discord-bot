@@ -96,7 +96,7 @@ async def on_voice_state_update(member, before, after):
             state = guild_states.get(before.channel.guild.id)
             if state:
                 print(f"[DEBUG] Bot was disconnected from voice channel in guild {before.channel.guild.name}. Cleaning up.")
-                state.voice_client = None
+                await state.handle_disconnect()
             return
         elif before.channel and after.channel and before.channel != after.channel:
             state = guild_states.get(after.channel.guild.id)

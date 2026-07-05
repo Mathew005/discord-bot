@@ -326,6 +326,41 @@ class GuildMusicState:
             except Exception:
                 pass
 
+    async def handle_disconnect(self):
+        # 1. Clean up active controller message
+        if self.last_controller_message:
+            if self.nonstop:
+                try:
+                    await self.last_controller_message.delete()
+                except Exception:
+                    pass
+            else:
+                try:
+                    player = self.voice_client
+                    if player and player.current:
+                        small_embed = discord.Embed(
+                            description=f"Played: **[{player.current.title}]({player.current.uri})**",
+                            color=THEME_COLOR
+                        )
+                        extras = dict(player.current.extras) if hasattr(player.current, 'extras') and player.current.extras else {}
+                        req_name = extras.get('requester', 'Autoplay')
+                        if extras.get('requester_avatar'):
+                            small_embed.set_footer(text=f"Requested by {req_name}", icon_url=extras.get('requester_avatar'))
+                        else:
+                            small_embed.set_footer(text=f"Requested by {req_name}")
+                        await self.last_controller_message.edit(embed=small_embed, view=None)
+                    else:
+                        await self.last_controller_message.delete()
+                except Exception:
+                    pass
+            self.last_controller_message = None
+
+        # 2. Stop progress loop
+        self.stop_progress_loop()
+
+        # 3. Clear voice client state
+        self.voice_client = None
+
 def get_guild_state(guild_id, bot) -> GuildMusicState:
     if guild_id not in guild_states:
         guild_states[guild_id] = GuildMusicState(guild_id, bot)

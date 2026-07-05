@@ -348,35 +348,6 @@ class Music(commands.Cog):
                 await ctx.send("You must be in the same voice channel as the bot to disconnect it.", ephemeral=True)
                 return
 
-        # Clean up the active controller message immediately on stop command
-        if state.last_controller_message:
-            if state.nonstop:
-                try:
-                    await state.last_controller_message.delete()
-                except Exception:
-                    pass
-            else:
-                try:
-                    if player.current:
-                        small_embed = discord.Embed(
-                            description=f"Played: **[{player.current.title}]({player.current.uri})**",
-                            color=state_module.THEME_COLOR
-                        )
-                        extras = dict(player.current.extras) if hasattr(player.current, 'extras') and player.current.extras else {}
-                        req_name = extras.get('requester', 'Autoplay')
-                        if extras.get('requester_avatar'):
-                            small_embed.set_footer(text=f"Requested by {req_name}", icon_url=extras.get('requester_avatar'))
-                        else:
-                            small_embed.set_footer(text=f"Requested by {req_name}")
-                        await state.last_controller_message.edit(embed=small_embed, view=None)
-                    else:
-                        await state.last_controller_message.delete()
-                except Exception:
-                    pass
-            state.last_controller_message = None
-
-        state.stop_progress_loop()
-
+        await state.handle_disconnect()
         await player.disconnect()
-        state.voice_client = None
         await ctx.send("Disconnected from voice channel.")
