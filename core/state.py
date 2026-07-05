@@ -297,6 +297,33 @@ class GuildMusicState:
             await self.voice_client.play(track)
             self.write_to_history(track)
 
+    async def change_artist(self, new_artist: str):
+        global configured_artist
+        configured_artist = new_artist
+        
+        # Persist artist selection
+        try:
+            with open(ARTIST_FILE, "w", encoding="utf-8") as f:
+                f.write(new_artist)
+        except Exception as e:
+            print(f"Error saving artist.txt: {e}")
+            
+        # Clear existing playlist so it is forced to reload
+        self.artist_playlist = []
+        self.artist_index = 0
+        
+        # Fetch the new playlist immediately
+        await self.update_artist_playlist()
+        
+        # Update the currently active controller message embed if there is one
+        if self.voice_client and self.voice_client.current:
+            try:
+                embed = create_now_playing_embed(self)
+                if self.last_controller_message:
+                    await self.last_controller_message.edit(embed=embed)
+            except Exception:
+                pass
+
 def get_guild_state(guild_id, bot) -> GuildMusicState:
     if guild_id not in guild_states:
         guild_states[guild_id] = GuildMusicState(guild_id, bot)

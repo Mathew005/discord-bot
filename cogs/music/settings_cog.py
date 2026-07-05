@@ -130,28 +130,75 @@ class MusicSettings(commands.Cog):
         await ctx.send("Queue cleared.")
 
     @commands.hybrid_command(name="setartist", aliases=["sa", "set", "artist"], description="Configure the autoplay artist and update immediately if playing autoplay.")
-    @discord.app_commands.describe(artist="The name of the artist to use for autoplay streams.")
-    async def setartist(self, ctx: commands.Context, *, artist: str):
+    @discord.app_commands.describe(artist="Optional name of the artist to use for autoplay streams. If empty, shows current configured artist.")
+    async def setartist(self, ctx: commands.Context, *, artist: str = None):
         if ctx.channel.id != ALLOWED_CHANNEL_ID:
             await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
             return
 
-        state_module.configured_artist = artist.strip()
-        
-        # Persist artist selection
-        try:
-            with open(state_module.ARTIST_FILE, "w", encoding="utf-8") as f:
-                f.write(state_module.configured_artist)
-        except Exception as e:
-            print(f"Error saving artist.txt: {e}")
-
-        await ctx.send(f"Artist configured and saved to: **{state_module.configured_artist}**")
+        if not artist:
+            await ctx.send(f"The current autoplay artist is: **{state_module.configured_artist}**")
+            return
 
         state = get_guild_state(ctx.guild.id, self.bot)
+        artist_name = artist.strip()
+        await state.change_artist(artist_name)
+
+        await ctx.send(f"Artist configured and saved to: **{artist_name}**")
+
+    @commands.hybrid_command(name="autoplay", description="Toggle autoplay on or off.")
+    @discord.app_commands.describe(status="Toggle status: 'on' to enable, or 'off' to disable.")
+    async def autoplay(self, ctx: commands.Context, status: str):
+        if ctx.channel.id != ALLOWED_CHANNEL_ID:
+            await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        status = status.lower().strip()
+        if status not in ['on', 'off']:
+            await ctx.send("Invalid status. Specify 'on' or 'off'.", ephemeral=True)
+            return
+
+        state = get_guild_state(ctx.guild.id, self.bot)
+        enabled = (status == 'on')
+        state.autoplay_enabled = enabled
+        
+        # If enabled and the player is idle, trigger autoplay
+        if enabled:
+            player = state.voice_client
+            if player and not player.current and not player.queue:
+                await state.play_autoplay()
+                await ctx.send("Autoplay enabled and stream started.")
+                return
+            await ctx.send("Autoplay enabled.")
+        else:
+            await ctx.send("Autoplay disabled.")
+
+    @commands.hybrid_command(name="nonstop", aliases=["247"], description="Toggle 24/7 nonprofit mode.")
+    @discord.app_commands.describe(status="Toggle status: 'on' to enable, or 'off' to disable.")
+    async def nonstop(self, ctx: commands.Context, status: str):
+        if ctx.channel.id != ALLOWED_CHANNEL_ID:
+            await ctx.send("Commands are not allowed in this channel.", ephemeral=True)
+            return
+
+        status = status.lower().strip()
+        if status not in ['on', 'off']:
+            await ctx.send("Invalid status. Specify 'on' or 'off'.", ephemeral=True)
+            return
+
+        state = get_guild_state(ctx.guild.id, self.bot)
+        state.nonstop = (status == 'on')
+        
+        # Update nonstop status badge in the active Now Playing embed if possible
         player = state.voice_client
-        if player and not player.current and state.autoplay_enabled:
-            state.artist_playlist = []
-            await state.play_autoplay()
+        if player and player.current:
+            try:
+                embed = state_module.create_now_playing_embed(state)
+                if state.last_controller_message:
+                    await state.last_controller_message.edit(embed=embed)
+            except Exception:
+                pass
+                
+        await ctx.send(f"24/7 Mode turned **{status.upper()}**.")
 
 async def setup(bot):
     await bot.add_cog(MusicSettings(bot))

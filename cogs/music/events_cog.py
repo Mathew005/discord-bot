@@ -146,10 +146,10 @@ class MusicEvents(commands.Cog):
                         state.previous_tracks.pop(0)
                         
             # If finished Normally, stopped (skipped), or failed to load, and queue is empty, trigger artist autoplay
-            if reason_upper in ['FINISHED', 'STOPPED', 'LOAD_FAILED'] and not player.queue and state.autoplay_enabled:
+            if reason_upper in ['FINISHED', 'STOPPED', 'LOAD_FAILED'] and not player.queue and state.autoplay_enabled and getattr(player, 'channel', None):
                 if state.voice_client:
                     async def play_later():
                         await asyncio.sleep(0.5)
-                        if state.voice_client and (not state.voice_client.current or state.voice_client.current == track):
+                        if state.voice_client and getattr(state.voice_client, 'channel', None) and (not state.voice_client.current or state.voice_client.current == track):
                             await state.play_autoplay()
                     asyncio.create_task(play_later())
