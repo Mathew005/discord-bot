@@ -71,6 +71,15 @@ def get_progress_bar_str(player: wavelink.Player):
         
     return f"{fmt_time(elapsed)}  [{bar}]  {fmt_time(duration)}"
 
+def get_status_emoji(bot, emoji_name, fallback_unicode):
+    # Dynamic workaround: Search bot cache first, then fallback to configured ID or unicode emoji
+    emoji = discord.utils.get(bot.emojis, name=emoji_name)
+    if emoji:
+        return str(emoji)
+    if emoji_name in EMOJIS:
+        return str(EMOJIS[emoji_name])
+    return fallback_unicode
+
 def create_now_playing_embed(state):
     player: wavelink.Player = state.voice_client
     track = player.current if player else None
@@ -91,18 +100,19 @@ def create_now_playing_embed(state):
     extras = dict(track.extras) if hasattr(track, 'extras') and track.extras else {}
     req_mention = extras.get('requester_mention', 'Autoplay')
     
+    bot = state.bot
     if duration == 0:
         status_parts.append("🔴 LIVE")
     elif req_mention == 'Autoplay':
-        status_parts.append(f"{EMOJIS['queue']} AUTOPLAY")
+        status_parts.append(f"{get_status_emoji(bot, 'queue', '🔄')} AUTOPLAY")
     else:
         status_parts.append("▶️ PLAYING")
         
     if player.queue.mode == wavelink.QueueMode.loop:
-        status_parts.append(f"{EMOJIS['loop']} LOOPING SONG")
+        status_parts.append(f"{get_status_emoji(bot, 'loop', '🔁')} LOOPING SONG")
         
     if state.nonstop:
-        status_parts.append(f"{EMOJIS['nonstop']} 24/7 MODE")
+        status_parts.append(f"{get_status_emoji(bot, 'nonstop', '🎛️')} 24/7 MODE")
         
     status_str = " | ".join(status_parts)
 
