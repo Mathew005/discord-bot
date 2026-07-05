@@ -1,13 +1,13 @@
 # Use lightweight python base image supporting ARM64 natively
 FROM python:3.11-slim
 
-# Install system dependencies, Java 17 for Lavalink, and curl
+# Install system dependencies, Java JRE, and curl
 RUN apt-get update && apt-get install -y \
     build-essential \
     libffi-dev \
     libopus-dev \
     ffmpeg \
-    openjdk-17-jre-headless \
+    default-jre-headless \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
