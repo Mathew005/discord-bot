@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 
 # Config state shared between cogs
-from core.config import ALLOWED_CHANNEL_ID, THEME_COLOR, HISTORY_DIR
+from core.config import ALLOWED_CHANNEL_ID, THEME_COLOR, HISTORY_DIR, EMOJIS
 ARTIST_FILE = "artist.txt"
 guild_states = {}
 
@@ -94,15 +94,15 @@ def create_now_playing_embed(state):
     if duration == 0:
         status_parts.append("🔴 LIVE")
     elif req_mention == 'Autoplay':
-        status_parts.append("🔄 AUTOPLAY")
+        status_parts.append(f"{EMOJIS['queue']} AUTOPLAY")
     else:
         status_parts.append("▶️ PLAYING")
         
     if player.queue.mode == wavelink.QueueMode.loop:
-        status_parts.append("🔁 LOOPING SONG")
+        status_parts.append(f"{EMOJIS['loop']} LOOPING SONG")
         
     if state.nonstop:
-        status_parts.append("🎛️ 24/7 MODE")
+        status_parts.append(f"{EMOJIS['nonstop']} 24/7 MODE")
         
     status_str = " | ".join(status_parts)
 
@@ -140,8 +140,12 @@ def create_now_playing_embed(state):
         else:
             embed.add_field(name="Next", value=f"`Autoplay: {configured_artist} will continue`" if state.autoplay_enabled else "`End of queue`", inline=False)
         
-    if track.artwork:
-        embed.set_thumbnail(url=track.artwork)
+    artwork_url = track.artwork
+    if not artwork_url and track.uri and ("youtube.com" in track.uri or "youtu.be" in track.uri):
+        artwork_url = f"https://img.youtube.com/vi/{track.identifier}/mqdefault.jpg"
+        
+    if artwork_url:
+        embed.set_thumbnail(url=artwork_url)
         
     req_name = extras.get('requester', 'Autoplay')
     if extras.get('requested_at'):
@@ -199,6 +203,11 @@ class GuildMusicState:
         self.update_task = None
 
     async def send_message(self, content):
+        if not self.text_channel:
+            try:
+                self.text_channel = self.bot.get_channel(ALLOWED_CHANNEL_ID) or await self.bot.fetch_channel(ALLOWED_CHANNEL_ID)
+            except Exception:
+                pass
         if self.text_channel:
             try:
                 await self.text_channel.send(content)
@@ -206,6 +215,11 @@ class GuildMusicState:
                 print(f"Error sending message: {e}")
 
     async def send_message_with_view(self, embed, view):
+        if not self.text_channel:
+            try:
+                self.text_channel = self.bot.get_channel(ALLOWED_CHANNEL_ID) or await self.bot.fetch_channel(ALLOWED_CHANNEL_ID)
+            except Exception:
+                pass
         if self.text_channel:
             try:
                 return await self.text_channel.send(embed=embed, view=view)

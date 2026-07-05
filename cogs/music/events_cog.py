@@ -7,6 +7,7 @@ import wavelink
 from core.state import get_guild_state, create_now_playing_embed
 from core.views import MusicControlView
 import core.state as state_module
+from core.config import THEME_COLOR
 
 class MusicEvents(commands.Cog):
     def __init__(self, bot):
