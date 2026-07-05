@@ -225,6 +225,7 @@ class Favorites(commands.Cog):
 
         player = state.voice_client
         added_count = 0
+        first_play = player.current is None
 
         for item in fav_list:
             title = item.get('title')
@@ -244,11 +245,12 @@ class Favorites(commands.Cog):
                         'requester_id': ctx.author.id,
                         'requested_at': time.time()
                     }
-                    if player.current:
-                        player.queue.put(track)
-                    else:
+                    if first_play:
                         await player.play(track)
                         state.write_to_history(track)
+                        first_play = False
+                    else:
+                        player.queue.put(track)
                     added_count += 1
             except Exception:
                 pass

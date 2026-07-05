@@ -64,6 +64,7 @@ class PlaylistSelect(discord.ui.Select):
             
         added_count = 0
         from core.filters import is_blacklisted
+        first_play = player.current is None
         
         for item in tracks_data:
             title = item.get('title')
@@ -83,11 +84,12 @@ class PlaylistSelect(discord.ui.Select):
                         'requester_id': interaction.user.id,
                         'requested_at': time.time()
                     }
-                    if player.current:
-                        player.queue.put(track)
-                    else:
+                    if first_play:
                         await player.play(track)
                         state.write_to_history(track)
+                        first_play = False
+                    else:
+                        player.queue.put(track)
                     added_count += 1
             except Exception:
                 pass
@@ -224,6 +226,7 @@ class Playlist(commands.Cog):
             await player.move_to(channel)
 
         added_count = 0
+        first_play = player.current is None
         for track_data in loaded_tracks:
             title = track_data.get('title', 'Unknown')
             url = track_data.get('url')
@@ -239,11 +242,12 @@ class Playlist(commands.Cog):
                             'requester_id': ctx.author.id,
                             'requested_at': time.time()
                         }
-                        if player.current:
-                            player.queue.put(track)
-                        else:
+                        if first_play:
                             await player.play(track)
                             state.write_to_history(track)
+                            first_play = False
+                        else:
+                            player.queue.put(track)
                         added_count += 1
                 except Exception as e:
                     print(f"Error loading track {title} from playlist: {e}")
