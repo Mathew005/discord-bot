@@ -382,20 +382,21 @@ class Music(commands.Cog):
             return
         track = payload.track
         reason = payload.reason
+        reason_upper = reason.upper() if reason else ""
         
         state = get_guild_state(player.guild.id, self.bot)
         if state:
             logging.info(f"⏹️ Track ended: '{track.title}' (Reason: {reason})")
             state.stop_progress_loop()
             # Save to previous tracks history
-            if reason in ['FINISHED', 'STOPPED', 'LOAD_FAILED']:
+            if reason_upper in ['FINISHED', 'STOPPED', 'LOAD_FAILED']:
                 if not state.previous_tracks or state.previous_tracks[-1].uri != track.uri:
                     state.previous_tracks.append(track)
                     if len(state.previous_tracks) > 50:
                         state.previous_tracks.pop(0)
                         
             # If finished Normally, stopped (skipped), or failed to load, and queue is empty, trigger artist autoplay
-            if reason in ['FINISHED', 'STOPPED', 'LOAD_FAILED'] and not player.queue and state.autoplay_enabled:
+            if reason_upper in ['FINISHED', 'STOPPED', 'LOAD_FAILED'] and not player.queue and state.autoplay_enabled:
                 if state.voice_client:
                     async def play_later():
                         await asyncio.sleep(0.5)
